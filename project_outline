@@ -1,0 +1,71 @@
+Admin
+Group/Game Name: Labyrinth Delirium / Luminara
+Github Link: https://github.com/JoniAn35/ptvc26-Luminara
+Students: Yoana Angelova, 12217658
+Genre: Puzzle Game
+Goal: Control light sources to cast shadows and create paths.
+Graphics API: Vulkan
+Game Idea and Content
+Story: In a world where light shapes reality, you play as an explorer trapped inside an ancient
+temple filled with mysterious mechanisms. The temple reacts to light, shifting walls, platforms,
+and hidden passages based on the placement of glowing orbs. To escape, you must master the
+art of casting and blocking light, revealing the path forward. Will you uncover the temple’s secret
+before darkness consumes you?
+Gameplay: Players can place and move light sources to illuminate areas, activate doors, and
+manipulate shadows as physical objects. Shadows cast on certain surfaces create temporary
+platforms, bridges, or barriers. Some puzzles require blocking or redirecting light using objects,
+mirrors, or rotating walls. The goal of each level is to reach the exit by carefully adjusting the
+light and shadows in the environment.
+User Interaction:
+• WASD: Move the character
+• Mouse: Adjust camera view
+• LMB: Pick up/place light sources or objects
+• RMB: Rotate objects (mirrors, reflectors, barriers)
+• Space: Jump
+• E: Interact with puzzle elements (turn the light source on and off)
+• ESC: Settings menu
+Effects
+Gameplay:
+Mandatory:
+● 3D Geometry (6 points): Detailed temple environments, walls, platforms, and
+interactive objects.
+● Playable (3 points): The player can move around the world, interact with objects,
+and solve puzzles.
+● Min 60 FPS and Framerate Independence (3 points): The rendering pipeline will
+be optimized to maintain at least 60 FPS with smooth gameplay.
+● Win/Lose Condition (3 points): Players win by solving puzzles and reaching the
+exit; they lose if they fall into pits or fail timed challenges.
+● Intuitive controls (2 points): The controls are simple: WASD for movement,
+mouse for camera, E for interaction, and LMB/RMB for object placement and
+interaction.
+● Intuitive Camera (2 points): The camera smoothly follows player movement with
+adjustable sensitivity.
+● Illumination model (2 points): The game uses a physically-based illumination
+model to create realistic lighting and shadow effects.
+● Textures (2 points): Textures will be applied to surfaces, including walls, floors,
+and interactive objects, to enhance realism.
+● Moving Objects (2 points): Mirrors, rotating panels, and objects can be moved to
+change the light’s path and solve puzzles.
+● Documentation (1 points): The project will include a short document describing
+game mechanics, controls, and technical implementation.
+● Adjustable Parameters (1 point): Players can adjust brightness, shadow
+sharpness, and mouse sensitivity in settings.
+Optional:
+● Advanced Gameplay (5 points): The game includes multi-layered puzzles that
+require sequential interactions, time-based challenges, and progressive difficulty.
+● Collision Detection (Basic Physics) (6 points): Objects will have collision
+physics to prevent walking through walls and allow realistic placement of light
+sources.
+● Heads-up Display (4 points): A simple UI will display active light sources, level
+progress, and key hints.
+Effects:
+Lighting:
+● Shadow Map with PCF (16 Points): The game will implement Percentage-Closer
+Filtering (PCF) shadow mapping to create smooth, realistic shadows from light
+sources.
+Advanced Modelling:
+● CPU Particle System (8 Points): A simple CPU-based particle system will be
+used for dust and light effects in the environment.
+Shading:
+● Simple Normal Mapping (4 Points): Normal maps will be used to enhance
+surface details of walls and floors.
