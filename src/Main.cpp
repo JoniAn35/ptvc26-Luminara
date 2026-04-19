@@ -24,7 +24,7 @@
 #undef max
 
 constexpr char WELCOME_MSG[] = ":::::: WELCOME TO GCG 2025 ::::::";
-constexpr char WINDOW_TITLE[] = "GCG 2025";
+constexpr char WINDOW_TITLE[] = "Luminara";
 
 constexpr float BACKGROUND_R = 0.14f;
 constexpr float BACKGROUND_G = 0.4f;
@@ -41,7 +41,8 @@ constexpr glm::vec3 BEAM_EMITTER_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X, 0.00f
 constexpr glm::vec2 BEAM_EMITTER_DIR_XZ = glm::vec2(1.0f, 0.0f);
 constexpr glm::vec3 BUTTON_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X + 0.03f, BEAM_EMITTER_POSITION.y, BEAM_EMITTER_POSITION.z);
 constexpr glm::vec3 BUTTON_SIZE = glm::vec3(0.03f, 0.10f, 0.10f);
-constexpr glm::vec3 BUTTON_PICK_SIZE = glm::vec3(0.30f, 0.30f, 0.30f);
+constexpr glm::vec3 BUTTON_PICK_SIZE = glm::vec3(0.60f, 0.50f, 0.50f);
+constexpr glm::vec3 BUTTON_PICK_OFFSET = glm::vec3(0.20f, 0.0f, 0.0f);
 constexpr glm::vec3 DOOR_BASE_POSITION = glm::vec3(0.0f, -0.975f, -ROOM_HALF_EXTENT_Z + 0.07f);
 constexpr glm::vec3 DOOR_SIZE = glm::vec3(0.65f, 1.5f, 0.08f);
 constexpr glm::vec3 SENSOR_POSITION = glm::vec3(ROOM_HALF_EXTENT_X, 0.0f, -0.45f);
@@ -511,7 +512,8 @@ int pickInteractiveObjectFromMouse(double mouse_x, double mouse_y, int window_wi
     float closest_t = std::numeric_limits<float>::max();
     int hit_id = -1;
 
-    AABB button_aabb{BUTTON_POSITION - BUTTON_PICK_SIZE * 0.5f, BUTTON_POSITION + BUTTON_PICK_SIZE * 0.5f};
+    const glm::vec3 button_pick_center = BUTTON_POSITION + BUTTON_PICK_OFFSET;
+    AABB button_aabb{button_pick_center - BUTTON_PICK_SIZE * 0.5f, button_pick_center + BUTTON_PICK_SIZE * 0.5f};
     float t_button = intersectRayAABB(hover_ray, button_aabb);
     if (t_button > 0.0f && t_button < closest_t) {
         closest_t = t_button;
@@ -1390,6 +1392,19 @@ int main(int argc, char** argv) {
         float dt = static_cast<float>(current_frame_time - previous_frame_time);
         previous_frame_time = current_frame_time;
         dt = glm::clamp(dt, 0.0f, 0.05f);
+
+        // Add this in your render loop (after dt calculation, around line 1391):
+        static float fps_timer = 0.0f;
+        static int frame_count = 0;
+        fps_timer += dt;
+        frame_count++;
+
+        if (fps_timer >= 1.0f) {
+            std::string new_title = "Luminara - FPS: " + std::to_string(frame_count);
+            glfwSetWindowTitle(window, new_title.c_str());
+            fps_timer = 0.0f;
+            frame_count = 0;
+        }
 
         if (first_mouse_sample) {
             previous_mouse_x = mouse_x;
