@@ -1074,6 +1074,14 @@ void copySwapchainImageToMirrorTexture(VkDevice device, VkQueue queue, VkCommand
 
 int main(int argc, char** argv) {
 
+    // Ensure relative paths like "assets/..." resolve correctly even when started from Finder.
+    try {
+        std::filesystem::current_path(gcgGetExecutableDir());
+    }
+    catch (const std::exception& e) {
+        VKL_WARNING("Could not set working directory to executable directory: " << e.what());
+    }
+
     CMDLineArgs cmdline_args;
     gcgParseArgs(cmdline_args, argc, argv);
 
