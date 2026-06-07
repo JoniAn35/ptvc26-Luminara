@@ -34,6 +34,8 @@ layout (binding = 2) uniform PointLight {
 
 layout (location = 0) out VertexData {
 	vec3 color;
+	vec3 positionLocal;
+	vec3 normalLocal;
 } vert_out;
 
 vec3 phong(vec3 n, vec3 l, vec3 v, vec3 diffuseC, float diffuseF, vec3 specularC, float specularF, float alpha, bool attenuate, vec3 attenuation) {
@@ -52,6 +54,8 @@ void main() {
 	vec3 normal_world = mat3(ub_data.modelMatrixForNormals) * in_normal;
 	vec4 position_world = ub_data.modelMatrix * vec4(in_position, 1);
 	gl_Position = ub_data.viewProjMatrix * position_world;
+	vert_out.positionLocal = in_position;
+	vert_out.normalLocal = in_normal;
 
 	vec3 n = normalize(normal_world);
 	vec3 v = normalize(ub_data.cameraPosition.xyz - position_world.xyz);

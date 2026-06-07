@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <exception>
 
 #include <sstream>
 #include "Camera.h"
@@ -37,23 +38,38 @@ constexpr float CORNELL_DEPTH = 6.0f;
 
 constexpr float ROOM_HALF_EXTENT_X = CORNELL_WIDTH * 0.5f - 0.05f;
 constexpr float ROOM_HALF_EXTENT_Z = CORNELL_DEPTH * 0.5f - 0.05f;
-constexpr glm::vec3 BEAM_EMITTER_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X, 0.00f, 1.1f);
+constexpr float INTERACTIVE_OBJECTS_Y = -0.50f;
+constexpr glm::vec3 BEAM_EMITTER_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X, INTERACTIVE_OBJECTS_Y, 1.1f);
 constexpr glm::vec2 BEAM_EMITTER_DIR_XZ = glm::vec2(1.0f, 0.0f);
-constexpr glm::vec3 BUTTON_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X + 0.03f, BEAM_EMITTER_POSITION.y, BEAM_EMITTER_POSITION.z);
+constexpr glm::vec3 BUTTON_POSITION = glm::vec3(-ROOM_HALF_EXTENT_X + 0.03f, INTERACTIVE_OBJECTS_Y, BEAM_EMITTER_POSITION.z);
 constexpr glm::vec3 BUTTON_SIZE = glm::vec3(0.03f, 0.10f, 0.10f);
 constexpr glm::vec3 BUTTON_PICK_SIZE = glm::vec3(0.60f, 0.50f, 0.50f);
 constexpr glm::vec3 BUTTON_PICK_OFFSET = glm::vec3(0.20f, 0.0f, 0.0f);
-constexpr glm::vec3 DOOR_BASE_POSITION = glm::vec3(0.0f, -0.975f, -ROOM_HALF_EXTENT_Z + 0.07f);
+constexpr glm::vec3 DOOR_BASE_POSITION = glm::vec3(0.0f, -0.975f, -ROOM_HALF_EXTENT_Z + 0.04f);
 constexpr glm::vec3 DOOR_SIZE = glm::vec3(0.65f, 1.5f, 0.08f);
-constexpr glm::vec3 SENSOR_POSITION = glm::vec3(ROOM_HALF_EXTENT_X, 0.0f, -0.45f);
+constexpr float DOOR_MODEL_STRETCH_X = 1.0f;
+constexpr char DOOR_MODEL_PATH[] = "assets/models/door.obj";
+constexpr std::array<const char*, 3> DOOR_ROTATING_OBJECT_NAMES = {
+    "G-No_Name_021", // knob/detail set
+    "G-No_Name_027", // door slab
+    "G-No_Name_023"  // knob/detail set (back side)
+};
+constexpr std::array<const char*, 4> DOOR_STATIC_OBJECT_NAMES = {
+    "G-No_Name_022", // static frame piece
+    "G-No_Name_024", // frame/hinge part
+    "G-No_Name_025", // frame/hinge part
+    "G-No_Name_026"  // frame/hinge part
+};
+constexpr glm::vec3 SENSOR_POSITION = glm::vec3(ROOM_HALF_EXTENT_X, INTERACTIVE_OBJECTS_Y, -0.45f);
 constexpr float SENSOR_RADIUS_XZ = 0.15f;
 constexpr glm::vec3 SENSOR_SCALE = glm::vec3(0.12f, 0.12f, 0.12f);
 constexpr float MIRROR_HALF_LENGTH = 0.35f;
 constexpr glm::vec3 MIRROR_SIZE = glm::vec3(0.05f, 0.3f, 0.3f);
 constexpr glm::vec3 MIRROR_PICK_SIZE = glm::vec3(0.45f, 0.95f, 1.05f);
-constexpr glm::vec3 MIRROR1_POSITION = glm::vec3(-0.65f, 0.0f, 1.1f);
-constexpr glm::vec3 MIRROR2_POSITION = glm::vec3(-0.65f, 0.0f, -0.45f);
+constexpr glm::vec3 MIRROR1_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, 1.1f);
+constexpr glm::vec3 MIRROR2_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, -0.45f);
 constexpr float BEAM_RADIUS = 0.01f;
+constexpr float BEAM_GLOW_RADIUS = 0.04f;
 constexpr uint32_t BEAM_CYLINDER_SEGMENTS = 18;
 constexpr int MAX_BEAM_SEGMENTS = 6;
 
@@ -78,6 +94,22 @@ constexpr glm::vec3 BOX_POSITION = glm::vec3(-0.6f, -0.9f, 0.0f);
 constexpr glm::vec3 CYLINDER_POSITION = glm::vec3(0.6f, 0.3f, 0.0f);
 constexpr glm::vec3 BEZIER_POSITION = glm::vec3(-0.6f, 0.0f, 0.0f);
 constexpr glm::vec3 SPHERE_POSITION = glm::vec3(0.6f, -0.9f, 0.0f);
+constexpr float PLAYER_EYE_HEIGHT_Y = -0.50f;
+constexpr float WIN_PANEL_DISTANCE = 0.80f;
+constexpr float WIN_PANEL_WIDTH = 1.05f;
+constexpr float WIN_PANEL_HEIGHT = 0.62f;
+constexpr float WIN_PANEL_DEPTH = 0.03f;
+constexpr float WIN_BUTTON_WIDTH = 0.26f;
+constexpr float WIN_BUTTON_HEIGHT = 0.10f;
+constexpr float WIN_BUTTON_DEPTH = 0.025f;
+constexpr float WIN_PANEL_BUTTON_OFFSET_X = 0.24f;
+constexpr float WIN_PANEL_BUTTON_Y = 0.18f;
+constexpr float WIN_MESSAGE_Y_OFFSET = 0.10f;
+constexpr float WIN_TEXT_DEPTH = 0.012f;
+constexpr float LOSE_TIMER_SECONDS = 120.0f;
+constexpr int   MAX_TIMER_STROKES  = 7;   // max 7-segment fill slots per digit
+constexpr int   TIMER_DIGITS = 3;
+constexpr int   MAX_TIMER_TOTAL_STROKES = MAX_TIMER_STROKES * TIMER_DIGITS;
 
 
 constexpr glm::vec4 DIRLIGHT_COLOR = glm::vec4(0.85f, 0.85f, 0.85f, 0.0f);
@@ -303,6 +335,10 @@ static bool g_left_pressed = false;
 static double g_left_press_x = 0.0;
 static double g_left_press_y = 0.0;
 
+// Optional cubemap descriptor used by mirror reflections in the fragment shader.
+static VkImageView g_environment_cubemap_view = VK_NULL_HANDLE;
+static VkSampler g_environment_cubemap_sampler = VK_NULL_HANDLE;
+
 /*!
  *	This callback function gets invoked by GLFW during glfwPollEvents() if there was
  *	mouse button input that can be processed by our application.
@@ -351,9 +387,7 @@ static int g_culling_index = 0;
  */
 void drawGeometryWithMaterial(VkPipeline pipeline, const Geometry& geometry, VkDescriptorSet material, uint32_t num_instances = 1u);
 
-static bool g_draw_normals = false;
-static bool g_draw_fresnel = true;
-static bool g_draw_texcoords = false;
+static bool g_timer_enabled = true;
 
 struct Ray {
     glm::vec3 origin;
@@ -379,6 +413,11 @@ struct MirrorData {
 struct LabelStroke {
     glm::vec3 position;
     glm::vec3 scale;
+};
+
+struct PanelStroke2D {
+    glm::vec2 center;
+    glm::vec2 size;
 };
 
 std::vector<LabelStroke> createPushMeLabelStrokes() {
@@ -453,6 +492,320 @@ std::vector<LabelStroke> createPushMeLabelStrokes() {
     addLetter('H'); cursor += char_width + word_gap;
     addLetter('M'); cursor += char_width + char_gap;
     addLetter('E');
+
+    return strokes;
+}
+
+std::vector<PanelStroke2D> createGoodJobPanelStrokes() {
+    constexpr float char_width = 0.075f;
+    constexpr float char_height = 0.115f;
+    constexpr float stroke = 0.015f;
+    constexpr float char_gap = 0.018f;
+    constexpr float word_gap = 0.036f;
+
+    std::vector<PanelStroke2D> strokes;
+    float cursor = 0.0f;
+
+    auto addRect = [&](float x, float y, float w, float h) {
+        strokes.push_back(PanelStroke2D{
+            glm::vec2(cursor + x + 0.5f * w, y + 0.5f * h),
+            glm::vec2(w, h)
+        });
+    };
+
+    auto addLetter = [&](char c) {
+        switch (c) {
+            case 'G':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, 0.50f * char_height);
+                addRect(0.50f * char_width, 0.50f * char_height - 0.5f * stroke, 0.50f * char_width, stroke);
+                break;
+            case 'O':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                break;
+            case 'D':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(char_width - stroke, stroke, stroke, char_height - 2.0f * stroke);
+                break;
+            case 'J':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(0.0f, 0.0f, stroke, 0.45f * char_height);
+                break;
+            case 'B':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.50f * char_height - 0.5f * stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                break;
+            case '!':
+                addRect(0.5f * char_width - 0.5f * stroke, 0.25f * char_height, stroke, 0.75f * char_height);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, stroke);
+                break;
+            default:
+                break;
+        }
+    };
+
+    addLetter('G'); cursor += char_width + char_gap;
+    addLetter('O'); cursor += char_width + char_gap;
+    addLetter('O'); cursor += char_width + char_gap;
+    addLetter('D'); cursor += char_width + word_gap;
+    addLetter('J'); cursor += char_width + char_gap;
+    addLetter('O'); cursor += char_width + char_gap;
+    addLetter('B'); cursor += char_width + char_gap;
+    addLetter('!');
+
+    const float total_width = cursor + char_width;
+    for (auto& stroke_data : strokes) {
+        stroke_data.center.x -= 0.5f * total_width;
+        stroke_data.center.y -= 0.5f * char_height;
+    }
+
+    return strokes;
+}
+
+std::vector<PanelStroke2D> createTryAgainPanelStrokes() {
+    constexpr float char_width  = 0.075f;
+    constexpr float char_height = 0.115f;
+    constexpr float stroke      = 0.015f;
+    constexpr float char_gap    = 0.018f;
+    constexpr float word_gap    = 0.036f;
+
+    std::vector<PanelStroke2D> strokes;
+    float cursor = 0.0f;
+
+    auto addRect = [&](float x, float y, float w, float h) {
+        strokes.push_back(PanelStroke2D{
+            glm::vec2(cursor + x + 0.5f * w, y + 0.5f * h),
+            glm::vec2(w, h)
+        });
+    };
+
+    auto addLetter = [&](char c) {
+        switch (c) {
+            case 'T':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, char_height);
+                break;
+            case 'R':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                addRect(char_width - stroke, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(0.45f * char_width, 0.0f, stroke, 0.5f * char_height);
+                addRect(0.45f * char_width, 0.0f, 0.55f * char_width, stroke);
+                break;
+            case 'Y':
+                addRect(0.0f, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(char_width - stroke, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, 0.5f * char_height + stroke);
+                break;
+            case 'A':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                break;
+            case 'G':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, 0.50f * char_height);
+                addRect(0.50f * char_width, 0.50f * char_height - 0.5f * stroke, 0.50f * char_width, stroke);
+                break;
+            case 'I':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, char_height);
+                break;
+            case 'N':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                for (int i = 0; i < 6; ++i) {
+                    const float t = static_cast<float>(i) / 5.0f;
+                    const float x = t * (char_width - stroke);
+                    const float y = (1.0f - t) * (char_height - stroke);
+                    addRect(x, y, stroke, stroke);
+                }
+                break;
+            case '.':
+                addRect(0.3f * char_width, 0.0f, 0.4f * char_width, stroke * 1.2f);
+                break;
+            default:
+                break;
+        }
+    };
+
+    addLetter('T'); cursor += char_width + char_gap;
+    addLetter('R'); cursor += char_width + char_gap;
+    addLetter('Y'); cursor += char_width + word_gap;
+    addLetter('A'); cursor += char_width + char_gap;
+    addLetter('G'); cursor += char_width + char_gap;
+    addLetter('A'); cursor += char_width + char_gap;
+    addLetter('I'); cursor += char_width + char_gap;
+    addLetter('N'); cursor += char_width + char_gap;
+    addLetter('.');
+
+    const float total_width = cursor + char_width;
+    for (auto& stroke_data : strokes) {
+        stroke_data.center.x -= 0.5f * total_width;
+        stroke_data.center.y -= 0.5f * char_height;
+    }
+
+    return strokes;
+}
+
+// Fills exactly MAX_TIMER_STROKES slots for digit 0-9 using a 7-segment layout.
+// Unused slots have zero size (rendered hidden).
+std::vector<PanelStroke2D> createTimerDigitStrokes(int digit) {
+    constexpr float dw = 0.0275f;   // digit width (half-size)
+    constexpr float dh = 0.0425f;   // digit height (half-size)
+    constexpr float dt = 0.0055f;   // segment thickness (half-size)
+    const float hw = 0.5f * dw;
+    const float hh = 0.5f * dh;
+
+    // 7 segments: A=top, B=top-right, C=bot-right, D=bottom, E=bot-left, F=top-left, G=middle
+    // Each entry: {x_offset, y_offset, width, height} relative to digit center
+    const float seg[7][4] = {
+        {-hw,          hh - dt,       dw,  dt },  // A top
+        {hw - dt,      0.0f,          dt,  hh },  // B top-right
+        {hw - dt,     -hh,            dt,  hh },  // C bot-right
+        {-hw,         -hh,            dw,  dt },  // D bottom
+        {-hw,         -hh,            dt,  hh },  // E bot-left
+        {-hw,          0.0f,          dt,  hh },  // F top-left
+        {-hw,         -dt * 0.5f,     dw,  dt },  // G middle
+    };
+
+    // Segments active per digit (A B C D E F G)
+    const bool on[10][7] = {
+        {1,1,1,1,1,1,0},  // 0
+        {0,1,1,0,0,0,0},  // 1
+        {1,1,0,1,1,0,1},  // 2
+        {1,1,1,1,0,0,1},  // 3
+        {0,1,1,0,0,1,1},  // 4
+        {1,0,1,1,0,1,1},  // 5
+        {1,0,1,1,1,1,1},  // 6
+        {1,1,1,0,0,0,0},  // 7
+        {1,1,1,1,1,1,1},  // 8
+        {1,1,1,1,0,1,1},  // 9
+    };
+
+    std::vector<PanelStroke2D> strokes(MAX_TIMER_STROKES, PanelStroke2D{glm::vec2(0.0f), glm::vec2(0.0f)});
+    const int d = std::clamp(digit, 0, 9);
+    int slot = 0;
+    for (int s = 0; s < 7 && slot < MAX_TIMER_STROKES; ++s) {
+        if (on[d][s]) {
+            strokes[slot++] = PanelStroke2D{
+                glm::vec2(seg[s][0] + 0.5f * seg[s][2], seg[s][1] + 0.5f * seg[s][3]),
+                glm::vec2(seg[s][2], seg[s][3])
+            };
+        }
+    }
+    return strokes;
+}
+
+std::vector<PanelStroke2D> createButtonLabelStrokes(const std::string& text) {
+    constexpr float char_width = 0.028f;
+    constexpr float char_height = 0.048f;
+    constexpr float stroke = 0.0065f;
+    constexpr float char_gap = 0.008f;
+    constexpr float diag_block = 0.006f;
+
+    std::vector<PanelStroke2D> strokes;
+    float cursor = 0.0f;
+
+    auto addRect = [&](float x, float y, float w, float h) {
+        strokes.push_back(PanelStroke2D{
+            glm::vec2(cursor + x + 0.5f * w, y + 0.5f * h),
+            glm::vec2(w, h)
+        });
+    };
+
+    auto addLetter = [&](char c) {
+        switch (c) {
+            case 'R':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                addRect(char_width - stroke, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(0.45f * char_width, 0.0f, stroke, 0.5f * char_height);
+                addRect(0.45f * char_width, 0.0f, 0.55f * char_width, stroke);
+                break;
+            case 'E':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                break;
+            case 'P':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                addRect(char_width - stroke, 0.5f * char_height, stroke, 0.5f * char_height);
+                break;
+            case 'L':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                break;
+            case 'A':
+                addRect(0.0f, 0.0f, stroke, char_height);
+                addRect(char_width - stroke, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.5f * char_height - 0.5f * stroke, char_width, stroke);
+                break;
+            case 'Y':
+                addRect(0.0f, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(char_width - stroke, 0.5f * char_height, stroke, 0.5f * char_height);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, 0.5f * char_height);
+                break;
+            case 'X':
+                // Approximate diagonal strokes with tiny square segments to make a readable 'X'.
+                for (int i = 0; i < 6; ++i) {
+                    const float t = static_cast<float>(i) / 5.0f;
+                    const float x1 = t * (char_width - diag_block);
+                    const float y1 = t * (char_height - diag_block);
+                    const float x2 = t * (char_width - diag_block);
+                    const float y2 = (1.0f - t) * (char_height - diag_block);
+                    addRect(x1, y1, diag_block, diag_block);
+                    addRect(x2, y2, diag_block, diag_block);
+                }
+                break;
+            case 'I':
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, char_height);
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.0f, 0.0f, char_width, stroke);
+                break;
+            case 'T':
+                addRect(0.0f, char_height - stroke, char_width, stroke);
+                addRect(0.5f * char_width - 0.5f * stroke, 0.0f, stroke, char_height);
+                break;
+            default:
+                break;
+        }
+    };
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        addLetter(text[i]);
+        if (i + 1 < text.size()) {
+            cursor += char_width + char_gap;
+        }
+    }
+
+    const float total_width = cursor + char_width;
+    for (auto& stroke_data : strokes) {
+        stroke_data.center.x -= 0.5f * total_width;
+        stroke_data.center.y -= 0.5f * char_height;
+    }
 
     return strokes;
 }
@@ -711,13 +1064,15 @@ struct ImageAndView {
  *	Waits until the operation has finished on the GPU.
  */
 ImageAndView loadImage(VkDevice device, VkQueue queue, VkCommandPool command_pool, std::string image_file_name);
+ImageAndView loadImage(VkDevice device, VkQueue queue, VkCommandPool command_pool, const std::vector<std::string>& image_file_names);
+void copySwapchainImageToMirrorTexture(VkDevice device, VkQueue queue, VkCommandPool command_pool, VkImage src_swapchain_image, VkImage dst_texture_image,
+    uint32_t width, uint32_t height, bool first_copy, bool src_was_presented_before);
 
 /* --------------------------------------------- */
 // Main
 /* --------------------------------------------- */
 
 int main(int argc, char** argv) {
-    VKL_LOG(WELCOME_MSG);
 
     CMDLineArgs cmdline_args;
     gcgParseArgs(cmdline_args, argc, argv);
@@ -761,9 +1116,6 @@ int main(int argc, char** argv) {
     if (with_backface_culling) {
         g_culling_index = 1;
     }
-    g_draw_normals = renderer_reader.GetBoolean("renderer", "normals", false);
-    g_draw_fresnel = renderer_reader.GetBoolean("renderer", "fresnel", true);
-    g_draw_texcoords = renderer_reader.GetBoolean("renderer", "texcoords", false);
     bool depthtest = renderer_reader.GetBoolean("renderer", "depthtest", true);
 
     // Install a callback function, which gets invoked whenever a GLFW error occurred.
@@ -789,12 +1141,8 @@ int main(int argc, char** argv) {
     window = glfwCreateWindow(window_width, window_height, window_title.c_str(), monitor, nullptr);
 
     if (!window) {
-        VKL_LOG("If your program reaches this point, that means two things:");
-        VKL_LOG("1) Project setup was successful. Everything is working fine.");
-        VKL_LOG("2) You haven't implemented Subtask 1.2, which is creating a window with GLFW.");
         VKL_EXIT_WITH_ERROR("No GLFW window created.");
     }
-    VKL_LOG("Subtask 1.2 done.");
 
     VkResult result;
     VkInstance vk_instance = VK_NULL_HANDLE;              // To be set during Subtask 1.3
@@ -860,7 +1208,6 @@ int main(int argc, char** argv) {
     if (!vk_instance) {
         VKL_EXIT_WITH_ERROR("No VkInstance created or handle not assigned.");
     }
-    VKL_LOG("Subtask 1.3 done.");
 
     /* --------------------------------------------- */
     // Subtask 1.4: Create a Vulkan Window Surface
@@ -870,7 +1217,6 @@ int main(int argc, char** argv) {
     if (!vk_surface) {
         VKL_EXIT_WITH_ERROR("No VkSurfaceKHR created or handle not assigned.");
     }
-    VKL_LOG("Subtask 1.4 done.");
 
     /* --------------------------------------------- */
     // Subtask 1.5: Pick a Physical Device
@@ -891,7 +1237,6 @@ int main(int argc, char** argv) {
     if (!vk_physical_device) {
         VKL_EXIT_WITH_ERROR("No VkPhysicalDevice selected or handle not assigned.");
     }
-    VKL_LOG("Subtask 1.5 done.");
 
     /* --------------------------------------------- */
     // Subtask 1.6: Select a Queue Family
@@ -911,7 +1256,6 @@ int main(int argc, char** argv) {
     if (selected_queue_family_index >= queue_family_count) {
         VKL_EXIT_WITH_ERROR("Invalid queue family index selected.");
     }
-    VKL_LOG("Subtask 1.6 done.");
 
     /* --------------------------------------------- */
     // Subtask 1.7: Create a Logical Device and Get Queue
@@ -972,7 +1316,6 @@ int main(int argc, char** argv) {
     if (!vk_queue) {
         VKL_EXIT_WITH_ERROR("No VkQueue selected or handle not assigned.");
     }
-    VKL_LOG("Subtask 1.7 done.");
 
     /* --------------------------------------------- */
     // Subtask 1.8: Create a Swapchain
@@ -1020,7 +1363,7 @@ int main(int argc, char** argv) {
     // Retrieve the swapchain images:
     std::vector<VkImage> swapchain_image_handles(swapchain_image_count);
     vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &swapchain_image_count, swapchain_image_handles.data());
-    VKL_LOG("Subtask 1.8 done.");
+    std::vector<bool> swapchain_image_presented_once(swapchain_image_count, false);
 
     /* --------------------------------------------- */
     // Subtask 2.7: Depth Test
@@ -1081,6 +1424,7 @@ int main(int argc, char** argv) {
         // Subtask 5.8: Use the Textures in Shaders
         /* --------------------------------------------- */
       , VkDescriptorSetLayoutBinding{3u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
+            , VkDescriptorSetLayoutBinding{4u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr}
     };
     // clang-format on
 
@@ -1092,6 +1436,7 @@ int main(int argc, char** argv) {
     VkPipeline cornell_pipelines[POLYMODES][CULLMODES];
     const size_t ILLUMODES = 1;
     VkPipeline custom_pipelines[POLYMODES][CULLMODES][ILLUMODES]; // Prepare pipelines for all the different combinations of configurations
+    VkPipeline glow_pipelines[POLYMODES][CULLMODES];
     VkPolygonMode polygon_modes[POLYMODES] = {VK_POLYGON_MODE_FILL, VK_POLYGON_MODE_LINE};
     VkCullModeFlags cull_modes[CULLMODES] = {VK_CULL_MODE_NONE, VK_CULL_MODE_BACK_BIT, VK_CULL_MODE_FRONT_BIT};
     const char* shaders[ILLUMODES][2] = {{"assets/shaders/texture.vert", "assets/shaders/texture.frag"}};
@@ -1178,19 +1523,47 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Dedicated alpha-blended pipeline for beam glow shells.
+    for (size_t i = 0; i < POLYMODES; ++i) {
+        for (size_t j = 0; j < CULLMODES; ++j) {
+            // clang-format off
+            glow_pipelines[i][j] = vklCreateGraphicsPipeline(
+                VklGraphicsPipelineConfig {
+                    "assets/shaders/texture.vert",
+                    "assets/shaders/texture.frag",
+                    {
+                        VkVertexInputBindingDescription{0u, sizeof(float) * 3, VK_VERTEX_INPUT_RATE_VERTEX},
+                        VkVertexInputBindingDescription{1u, sizeof(float) * 3, VK_VERTEX_INPUT_RATE_VERTEX},
+                        VkVertexInputBindingDescription{2u, sizeof(float) * 2, VK_VERTEX_INPUT_RATE_VERTEX},
+                    },
+                    {
+                        VkVertexInputAttributeDescription{0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 0u},
+                        VkVertexInputAttributeDescription{1u, 1u, VK_FORMAT_R32G32B32_SFLOAT, 0u},
+                        VkVertexInputAttributeDescription{2u, 2u, VK_FORMAT_R32G32_SFLOAT, 0u}
+                    },
+                    polygon_modes[i],
+                    cull_modes[j],
+                    descriptor_set_layout_bindings,
+                    true
+                }
+            );
+            // clang-format on
+        }
+    }
+
     /* --------------------------------------------- */
     // Subtask 2.3: Allocate and Write Descriptors
     /* --------------------------------------------- */
     // clang-format off
     std::vector<VkDescriptorPoolSize> pool_sizes{
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 512u}
-            , VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256u}
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024u}
+            , VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024u}
     };
     // clang-format on
 
     VkDescriptorPoolCreateInfo descriptor_pool_create_info = {};
     descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptor_pool_create_info.maxSets = 128u;
+    descriptor_pool_create_info.maxSets = 512u;
     descriptor_pool_create_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
     descriptor_pool_create_info.pPoolSizes = pool_sizes.data();
 
@@ -1240,7 +1613,40 @@ int main(int argc, char** argv) {
     vkCreateCommandPool(vk_device, &command_pool_create_info, nullptr, &command_pool);
 
     ImageAndView wood_texture = loadImage(vk_device, vk_queue, command_pool, "assets/textures/wood_texture.dds");
+    ImageAndView wooden_floor_texture = loadImage(vk_device, vk_queue, command_pool, "assets/textures/wooden_floor.dds");
     ImageAndView tiles_diffuse = loadImage(vk_device, vk_queue, command_pool, "assets/textures/tiles_diffuse.dds");
+    VkImage mirror_scene_image = vklCreateDeviceLocalImageWithBackingMemory(
+        swapchain_create_info.imageExtent.width,
+        swapchain_create_info.imageExtent.height,
+        swapchain_create_info.imageFormat,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+    );
+    VkImageViewCreateInfo mirror_scene_view_ci = {};
+    mirror_scene_view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    mirror_scene_view_ci.image = mirror_scene_image;
+    mirror_scene_view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    mirror_scene_view_ci.format = swapchain_create_info.imageFormat;
+    mirror_scene_view_ci.components.r = VK_COMPONENT_SWIZZLE_R;
+    mirror_scene_view_ci.components.g = VK_COMPONENT_SWIZZLE_G;
+    mirror_scene_view_ci.components.b = VK_COMPONENT_SWIZZLE_B;
+    mirror_scene_view_ci.components.a = VK_COMPONENT_SWIZZLE_A;
+    mirror_scene_view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    mirror_scene_view_ci.subresourceRange.baseMipLevel = 0u;
+    mirror_scene_view_ci.subresourceRange.levelCount = 1u;
+    mirror_scene_view_ci.subresourceRange.baseArrayLayer = 0u;
+    mirror_scene_view_ci.subresourceRange.layerCount = 1u;
+    VkImageView mirror_scene_view = VK_NULL_HANDLE;
+    result = vkCreateImageView(vk_device, &mirror_scene_view_ci, nullptr, &mirror_scene_view);
+    VKL_CHECK_VULKAN_RESULT(result);
+    ImageAndView environment_cubemap = loadImage(vk_device, vk_queue, command_pool,
+        {
+            "assets/textures/cubemap/posx.dds",
+            "assets/textures/cubemap/negx.dds",
+            "assets/textures/cubemap/posy.dds",
+            "assets/textures/cubemap/negy.dds",
+            "assets/textures/cubemap/posz.dds",
+            "assets/textures/cubemap/negz.dds",
+        });
 
     /* --------------------------------------------- */
     // Subtask 5.7: Create a Sampler
@@ -1258,6 +1664,10 @@ int main(int argc, char** argv) {
     result = vkCreateSampler(vk_device, &sampler_create_info, nullptr, &sampler);
     VKL_CHECK_VULKAN_RESULT(result);
 
+    // Bind this cubemap globally to descriptor binding = 4 for all textured materials.
+    g_environment_cubemap_view = environment_cubemap.view;
+    g_environment_cubemap_sampler = sampler;
+
 
     // Cornell box geometry and material
     Geometry cornell_geometry = createAndUploadIntoGpuMemory(createCornellBoxGeometry(CORNELL_WIDTH, CORNELL_HEIGHT, CORNELL_DEPTH));
@@ -1265,10 +1675,59 @@ int main(int argc, char** argv) {
         sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
     );
     VkDescriptorSet ds_cornell = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
-    writeDescriptorSet(vk_device, ds_cornell, ub_cornell, ub_dirlight, ub_pointlight);
+    writeDescriptorSet(vk_device, ds_cornell, ub_cornell, ub_dirlight, ub_pointlight, wooden_floor_texture.view, sampler);
 
     // Reusable geometries used for all level objects.
     Geometry box_geometry = createAndUploadIntoGpuMemory(createBoxGeometry(1.0f, 1.0f, 1.0f));
+    GeometryData door_geometry_data;
+    GeometryData door_frame_geometry_data;
+    bool use_loaded_door_model = false;
+    bool draw_static_door_frame = false;
+    glm::vec3 door_model_center(0.0f);
+    glm::vec3 door_model_unit_scale(1.0f);
+    glm::vec3 door_runtime_base_position = DOOR_BASE_POSITION;
+    const std::string resolved_door_model_path = gcgFindFileInParentDir(DOOR_MODEL_PATH);
+    if (!resolved_door_model_path.empty()) {
+        const GeometryData full_door_geometry_data = loadObjGeometry(DOOR_MODEL_PATH);
+        const std::vector<std::string> rotating_object_names(DOOR_ROTATING_OBJECT_NAMES.begin(), DOOR_ROTATING_OBJECT_NAMES.end());
+        const std::vector<std::string> static_object_names(DOOR_STATIC_OBJECT_NAMES.begin(), DOOR_STATIC_OBJECT_NAMES.end());
+        door_geometry_data = loadObjGeometry(DOOR_MODEL_PATH, rotating_object_names);
+        door_frame_geometry_data = loadObjGeometry(DOOR_MODEL_PATH, static_object_names);
+        draw_static_door_frame = true;
+        use_loaded_door_model = true;
+
+        glm::vec3 min_p(std::numeric_limits<float>::max());
+        glm::vec3 max_p(std::numeric_limits<float>::lowest());
+        for (const auto& p : full_door_geometry_data.positions) {
+            min_p = glm::min(min_p, p);
+            max_p = glm::max(max_p, p);
+        }
+        door_model_center = 0.5f * (min_p + max_p);
+        const glm::vec3 extents = max_p - min_p;
+        const float eps = 1e-5f;
+        door_model_unit_scale = glm::vec3(
+            1.0f / glm::max(extents.x, eps),
+            1.0f / glm::max(extents.y, eps),
+            1.0f / glm::max(extents.z, eps)
+        );
+
+        if (!door_frame_geometry_data.positions.empty()) {
+            float frame_min_z = std::numeric_limits<float>::max();
+            for (const auto& p : door_frame_geometry_data.positions) {
+                frame_min_z = glm::min(frame_min_z, p.z);
+            }
+            const float frame_min_z_normalized = (frame_min_z - door_model_center.z) * door_model_unit_scale.z;
+            const float back_wall_z = -ROOM_HALF_EXTENT_Z;
+            door_runtime_base_position.z = back_wall_z - frame_min_z_normalized * DOOR_SIZE.z;
+        }
+    }
+    else {
+        VKL_WARNING("Door model not found at '" << DOOR_MODEL_PATH << "'. Falling back to primitive box door.");
+        door_geometry_data = createBoxGeometry(1.0f, 1.0f, 1.0f);
+        door_frame_geometry_data = createBoxGeometry(1.0f, 1.0f, 1.0f);
+    }
+    Geometry door_geometry = createAndUploadIntoGpuMemory(door_geometry_data);
+    Geometry door_frame_geometry = createAndUploadIntoGpuMemory(door_frame_geometry_data);
     Geometry sphere_geometry = createAndUploadIntoGpuMemory(createSphereGeometry(SPHERE_LON_SEG, SPHERE_LAT_SEG, 1.0f));
     Geometry beam_cylinder_geometry = createAndUploadIntoGpuMemory(createCylinderGeometry(BEAM_CYLINDER_SEGMENTS, 1.0f, 1.0f));
 
@@ -1284,6 +1743,12 @@ int main(int argc, char** argv) {
     VkDescriptorSet ds_door = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
     writeDescriptorSet(vk_device, ds_door, ub_door, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
 
+    VkBuffer ub_door_frame = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkDescriptorSet ds_door_frame = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    writeDescriptorSet(vk_device, ds_door_frame, ub_door_frame, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+
     VkBuffer ub_sensor = vklCreateHostCoherentBufferWithBackingMemory(
         sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
     );
@@ -1298,17 +1763,25 @@ int main(int argc, char** argv) {
     );
     VkDescriptorSet ds_mirror_1 = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
     VkDescriptorSet ds_mirror_2 = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
-    writeDescriptorSet(vk_device, ds_mirror_1, ub_mirror_1, ub_dirlight, ub_pointlight, wood_texture.view, sampler);
-    writeDescriptorSet(vk_device, ds_mirror_2, ub_mirror_2, ub_dirlight, ub_pointlight, wood_texture.view, sampler);
+    writeDescriptorSet(vk_device, ds_mirror_1, ub_mirror_1, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
+    writeDescriptorSet(vk_device, ds_mirror_2, ub_mirror_2, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
 
     std::array<VkBuffer, MAX_BEAM_SEGMENTS> ub_beam_segments{};
     std::array<VkDescriptorSet, MAX_BEAM_SEGMENTS> ds_beam_segments{};
+    std::array<VkBuffer, MAX_BEAM_SEGMENTS> ub_beam_glow_segments{};
+    std::array<VkDescriptorSet, MAX_BEAM_SEGMENTS> ds_beam_glow_segments{};
     for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
         ub_beam_segments[i] = vklCreateHostCoherentBufferWithBackingMemory(
             sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
         );
         ds_beam_segments[i] = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
         writeDescriptorSet(vk_device, ds_beam_segments[i], ub_beam_segments[i], ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+
+        ub_beam_glow_segments[i] = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        ds_beam_glow_segments[i] = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds_beam_glow_segments[i], ub_beam_glow_segments[i], ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
     }
 
     const std::vector<LabelStroke> label_strokes = createPushMeLabelStrokes();
@@ -1326,16 +1799,120 @@ int main(int argc, char** argv) {
         ds_label_strokes.push_back(ds);
     }
 
+    const std::vector<PanelStroke2D> win_message_strokes = createGoodJobPanelStrokes();
+    const std::vector<PanelStroke2D> lose_message_strokes = createTryAgainPanelStrokes();
+    const std::vector<PanelStroke2D> replay_button_strokes = createButtonLabelStrokes("REPLAY");
+    const std::vector<PanelStroke2D> exit_button_strokes = createButtonLabelStrokes("EXIT");
+    std::vector<VkBuffer> ub_win_message_strokes;
+    std::vector<VkDescriptorSet> ds_win_message_strokes;
+    ub_win_message_strokes.reserve(win_message_strokes.size());
+    ds_win_message_strokes.reserve(win_message_strokes.size());
+    for (size_t i = 0; i < win_message_strokes.size(); ++i) {
+        VkBuffer ub = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        VkDescriptorSet ds = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds, ub, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+        ub_win_message_strokes.push_back(ub);
+        ds_win_message_strokes.push_back(ds);
+    }
+
+    std::vector<VkBuffer> ub_lose_message_strokes;
+    std::vector<VkDescriptorSet> ds_lose_message_strokes;
+    ub_lose_message_strokes.reserve(lose_message_strokes.size());
+    ds_lose_message_strokes.reserve(lose_message_strokes.size());
+    for (size_t i = 0; i < lose_message_strokes.size(); ++i) {
+        VkBuffer ub = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        VkDescriptorSet ds = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds, ub, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+        ub_lose_message_strokes.push_back(ub);
+        ds_lose_message_strokes.push_back(ds);
+    }
+
+    // Timer HUD: pre-allocate slots for all 3 digits; we overwrite each frame.
+    std::vector<VkBuffer> ub_timer_strokes(MAX_TIMER_TOTAL_STROKES);
+    std::vector<VkDescriptorSet> ds_timer_strokes(MAX_TIMER_TOTAL_STROKES);
+    VkBuffer ub_timer_bg = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkDescriptorSet ds_timer_bg = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    writeDescriptorSet(vk_device, ds_timer_bg, ub_timer_bg, ub_dirlight, ub_pointlight, wood_texture.view, sampler);
+    for (int i = 0; i < MAX_TIMER_TOTAL_STROKES; ++i) {
+        ub_timer_strokes[i] = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        ds_timer_strokes[i] = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds_timer_strokes[i], ub_timer_strokes[i], ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+    }
+
+    VkBuffer ub_bloom_overlay = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkDescriptorSet ds_bloom_overlay = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    writeDescriptorSet(vk_device, ds_bloom_overlay, ub_bloom_overlay, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
+
+    std::vector<VkBuffer> ub_replay_button_strokes;
+    std::vector<VkDescriptorSet> ds_replay_button_strokes;
+    ub_replay_button_strokes.reserve(replay_button_strokes.size());
+    ds_replay_button_strokes.reserve(replay_button_strokes.size());
+    for (size_t i = 0; i < replay_button_strokes.size(); ++i) {
+        VkBuffer ub = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        VkDescriptorSet ds = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds, ub, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+        ub_replay_button_strokes.push_back(ub);
+        ds_replay_button_strokes.push_back(ds);
+    }
+
+    std::vector<VkBuffer> ub_exit_button_strokes;
+    std::vector<VkDescriptorSet> ds_exit_button_strokes;
+    ub_exit_button_strokes.reserve(exit_button_strokes.size());
+    ds_exit_button_strokes.reserve(exit_button_strokes.size());
+    for (size_t i = 0; i < exit_button_strokes.size(); ++i) {
+        VkBuffer ub = vklCreateHostCoherentBufferWithBackingMemory(
+            sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+        );
+        VkDescriptorSet ds = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+        writeDescriptorSet(vk_device, ds, ub, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+        ub_exit_button_strokes.push_back(ub);
+        ds_exit_button_strokes.push_back(ds);
+    }
+
+    VkBuffer ub_win_panel = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkBuffer ub_win_replay = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkBuffer ub_win_exit = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkDescriptorSet ds_win_panel = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    VkDescriptorSet ds_win_replay = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    VkDescriptorSet ds_win_exit = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    writeDescriptorSet(vk_device, ds_win_panel, ub_win_panel, ub_dirlight, ub_pointlight, wood_texture.view, sampler);
+    writeDescriptorSet(vk_device, ds_win_replay, ub_win_replay, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+    writeDescriptorSet(vk_device, ds_win_exit, ub_win_exit, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
+
     bool button_pressed = false;
     bool sensor_triggered = false;
+    bool has_won = false;
+    bool has_lost = false;
+    float time_remaining = LOSE_TIMER_SECONDS;
+    constexpr int INITIAL_MIRROR_1_ROTATION = 5;
+    constexpr int INITIAL_MIRROR_2_ROTATION = 1;
+    bool first_mirror_scene_copy = true;
     std::array<MirrorData, 2> mirrors = {
-        MirrorData{glm::vec2(MIRROR1_POSITION.x, MIRROR1_POSITION.z), 5, MIRROR_HALF_LENGTH},
-        MirrorData{glm::vec2(MIRROR2_POSITION.x, MIRROR2_POSITION.z), 1, MIRROR_HALF_LENGTH}
+        MirrorData{glm::vec2(MIRROR1_POSITION.x, MIRROR1_POSITION.z), INITIAL_MIRROR_1_ROTATION, MIRROR_HALF_LENGTH},
+        MirrorData{glm::vec2(MIRROR2_POSITION.x, MIRROR2_POSITION.z), INITIAL_MIRROR_2_ROTATION, MIRROR_HALF_LENGTH}
     };
     std::vector<BeamSegment> beam_segments;
 
     // First-person camera state (inside the room).
-    glm::vec3 player_position = glm::vec3(0.0f, -0.15f, 1.2f);
+    glm::vec3 player_position = glm::vec3(0.0f, PLAYER_EYE_HEIGHT_Y, 1.2f);
     float player_yaw = camera_yaw;
     float player_pitch = camera_pitch;
     const float mouse_sensitivity = 0.0025f;
@@ -1345,6 +1922,28 @@ int main(int argc, char** argv) {
     double previous_mouse_x = 0.0;
     double previous_mouse_y = 0.0;
     bool first_mouse_sample = true;
+
+    auto resetLevelState = [&]() {
+        button_pressed = false;
+        sensor_triggered = false;
+        has_won = false;
+        has_lost = false;
+        time_remaining = LOSE_TIMER_SECONDS;
+        g_timer_enabled = true;
+        mirrors[0].rotationIndex = INITIAL_MIRROR_1_ROTATION;
+        mirrors[1].rotationIndex = INITIAL_MIRROR_2_ROTATION;
+        beam_segments.clear();
+        player_position = glm::vec3(0.0f, PLAYER_EYE_HEIGHT_Y, 1.2f);
+        player_yaw = camera_yaw;
+        player_pitch = camera_pitch;
+        first_mouse_sample = true;
+        previous_frame_time = glfwGetTime();
+        g_left_clicked = false;
+        g_left_pressed = false;
+        g_dragging = false;
+        g_strafing = false;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    };
 
     // Establish a callback function for handling mouse button events:
     glfwSetMouseButtonCallback(window, mouseButtonCallbackFromGlfw);
@@ -1364,26 +1963,13 @@ int main(int argc, char** argv) {
         /* --------------------------------------------- */
         // Subtask 3.3: Interaction
         /* --------------------------------------------- */
-        if (key == GLFW_KEY_F1) {
-            g_polygon_mode_index = 1 - g_polygon_mode_index;
-        }
-        if (key == GLFW_KEY_F2) {
-            g_culling_index = (g_culling_index + 1) % 3;
-        }
-        if (key == GLFW_KEY_N) {
-            g_draw_normals = !g_draw_normals;
-        }
-        if (key == GLFW_KEY_F) {
-            g_draw_fresnel = !g_draw_fresnel;
-        }
         if (key == GLFW_KEY_T) {
-            g_draw_texcoords = !g_draw_texcoords;
+            g_timer_enabled = !g_timer_enabled;
         }
     });
 
     double mouse_x, mouse_y;
 
-    vklEnablePipelineHotReloading(window, GLFW_KEY_F5);
     while (!glfwWindowShouldClose(window)) {
         // Handle user input:
         glfwPollEvents();
@@ -1417,7 +2003,7 @@ int main(int argc, char** argv) {
         previous_mouse_x = mouse_x;
         previous_mouse_y = mouse_y;
 
-        if (g_strafing) {
+        if (!has_won && !has_lost && g_strafing) {
             player_yaw += mouse_dx * mouse_sensitivity;
             player_pitch -= mouse_dy * mouse_sensitivity;
             player_pitch = glm::clamp(player_pitch, -pitch_limit, pitch_limit);
@@ -1431,12 +2017,15 @@ int main(int argc, char** argv) {
         ));
         const glm::vec3 horizontal_forward = glm::normalize(glm::vec3(camera_forward.x, 0.0f, camera_forward.z));
         const glm::vec3 camera_right = glm::normalize(glm::cross(horizontal_forward, world_up));
+        const glm::vec3 camera_up = glm::normalize(glm::cross(camera_right, camera_forward));
 
         glm::vec3 move_dir(0.0f);
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) move_dir += horizontal_forward;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) move_dir -= horizontal_forward;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) move_dir -= camera_right;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) move_dir += camera_right;
+        if (!has_won && !has_lost) {
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) move_dir += horizontal_forward;
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) move_dir -= horizontal_forward;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) move_dir -= camera_right;
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) move_dir += camera_right;
+        }
 
         if (glm::length(move_dir) > 0.0f) {
             move_dir = glm::normalize(move_dir);
@@ -1445,19 +2034,50 @@ int main(int argc, char** argv) {
 
         player_position.x = glm::clamp(player_position.x, -ROOM_HALF_EXTENT_X + 0.12f, ROOM_HALF_EXTENT_X - 0.12f);
         player_position.z = glm::clamp(player_position.z, -ROOM_HALF_EXTENT_Z + 0.12f, ROOM_HALF_EXTENT_Z - 0.12f);
-        player_position.y = -0.15f;
+        player_position.y = PLAYER_EYE_HEIGHT_Y;
 
         const glm::mat4 view_matrix = glm::lookAt(player_position, player_position + camera_forward, world_up);
         const glm::mat4 proj_matrix = gcgCreatePerspectiveProjectionMatrix(
             glm::radians(field_of_view), aspect_ratio, near_plane_distance, far_plane_distance
         );
         const glm::mat4 view_proj = proj_matrix * view_matrix;
-        const int hovered_interactive_id = pickInteractiveObjectFromMouse(mouse_x, mouse_y, window_width, window_height, view_proj);
+        const int hovered_interactive_id = (has_won || has_lost) ? -1 : pickInteractiveObjectFromMouse(mouse_x, mouse_y, window_width, window_height, view_proj);
+
+        // 2D overlay coordinates in NDC for win/lose panels
+        const glm::vec3 panel_center = glm::vec3(0.0f, -0.02f, 0.30f);
+        const glm::vec3 replay_button_center = panel_center + glm::vec3(-WIN_PANEL_BUTTON_OFFSET_X, WIN_PANEL_BUTTON_Y, -0.05f);
+        const glm::vec3 exit_button_center = panel_center + glm::vec3( WIN_PANEL_BUTTON_OFFSET_X, WIN_PANEL_BUTTON_Y, -0.05f);
 
         if (g_left_clicked) {
             g_left_clicked = false;
 
-            if (hovered_interactive_id == 0) {
+            if (has_won || has_lost) {
+                const float ndc_x = 2.0f * static_cast<float>(mouse_x) / static_cast<float>(window_width) - 1.0f;
+                const float ndc_y = 1.0f - 2.0f * static_cast<float>(mouse_y) / static_cast<float>(window_height);
+                // Overlay rendering has flipped Y in this setup, mirror for hit testing too.
+                const float ui_x = ndc_x;
+                const float ui_y = -ndc_y;
+
+                constexpr float CLICK_PAD_X = 0.02f;
+                constexpr float CLICK_PAD_Y = 0.02f;
+
+                const bool on_replay = std::abs(ui_x - replay_button_center.x) <= (0.5f * WIN_BUTTON_WIDTH + CLICK_PAD_X)
+                                       && std::abs(ui_y - replay_button_center.y) <= (0.5f * WIN_BUTTON_HEIGHT + CLICK_PAD_Y);
+                const bool on_exit = std::abs(ui_x - exit_button_center.x) <= (0.5f * WIN_BUTTON_WIDTH + CLICK_PAD_X)
+                                     && std::abs(ui_y - exit_button_center.y) <= (0.5f * WIN_BUTTON_HEIGHT + CLICK_PAD_Y);
+
+                if (on_replay && !on_exit) {
+                    resetLevelState();
+                } else if (on_exit && !on_replay) {
+                    glfwSetWindowShouldClose(window, true);
+                } else if (on_replay && on_exit) {
+                    if (ui_x < 0.0f) {
+                        resetLevelState();
+                    } else {
+                        glfwSetWindowShouldClose(window, true);
+                    }
+                }
+            } else if (hovered_interactive_id == 0) {
                 button_pressed = !button_pressed;
             } else if (hovered_interactive_id == 1) {
                 mirrors[0].rotationIndex = (mirrors[0].rotationIndex + 1) % 8;
@@ -1466,10 +2086,24 @@ int main(int argc, char** argv) {
             }
         }
 
-        beam_segments.clear();
-        sensor_triggered = false;
+        if (!has_won && !has_lost) {
+            beam_segments.clear();
+            sensor_triggered = false;
+        }
 
-        if (button_pressed) {
+        // Countdown timer
+        if (!has_won && !has_lost) {
+            time_remaining -= dt;
+            if (time_remaining <= 0.0f) {
+                time_remaining = 0.0f;
+                has_lost = true;
+                g_left_pressed = false;
+                g_left_clicked = false;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+        }
+
+        if (!has_won && !has_lost && button_pressed) {
             glm::vec2 beam_origin = glm::vec2(BEAM_EMITTER_POSITION.x, BEAM_EMITTER_POSITION.z);
             glm::vec2 beam_direction = glm::normalize(BEAM_EMITTER_DIR_XZ);
 
@@ -1528,10 +2162,19 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (!has_won && !has_lost && sensor_triggered) {
+            has_won = true;
+            g_strafing = false;
+            g_dragging = false;
+            g_left_pressed = false;
+            g_left_clicked = false;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+
         UniformBuffer ub_data;
-        ub_data.userInput[0] = g_draw_normals ? 1 : 0;
-        ub_data.userInput[1] = g_draw_fresnel ? 1 : 0;
-        ub_data.userInput[2] = g_draw_texcoords ? 1 : 0;
+        ub_data.userInput[0] = 0;
+        ub_data.userInput[1] = 0;
+        ub_data.userInput[2] = 0;
         ub_data.userInput[3] = 0;
 
         // View-projection matrix and camera's position stay the same for all rendered objects:
@@ -1551,16 +2194,40 @@ int main(int argc, char** argv) {
         vklCopyDataIntoHostCoherentBuffer(ub_button, &ub_data, sizeof(UniformBuffer));
 
         // Door rotates on the right side face (hinge) when sensor is hit.
-        const float door_open_angle = sensor_triggered ? glm::radians(30.0f) : 0.0f;
-        ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, DOOR_BASE_POSITION)
+        const float door_open_angle = (sensor_triggered || has_won) ? glm::radians(30.0f) : 0.0f;
+        glm::mat4 door_model_space = glm::mat4(1.0f);
+        if (use_loaded_door_model) {
+            // Normalize imported model coordinates so gameplay transforms remain consistent.
+            const glm::vec3 door_model_stretch(DOOR_MODEL_STRETCH_X, 1.0f, 1.0f);
+            door_model_space = glm::scale(glm::mat4(1.0f), door_model_stretch)
+                             * glm::scale(glm::mat4(1.0f), door_model_unit_scale)
+                             * glm::translate(glm::mat4(1.0f), -door_model_center);
+        }
+        ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, door_runtime_base_position)
                       * glm::translate(glm::mat4{1.0f}, glm::vec3(0.5f * DOOR_SIZE.x, 0.0f, 0.0f))
                       * glm::rotate(glm::mat4{1.0f}, door_open_angle, glm::vec3(0.0f, 1.0f, 0.0f))
                       * glm::translate(glm::mat4{1.0f}, glm::vec3(-0.5f * DOOR_SIZE.x, 0.0f, 0.0f))
-                      * glm::scale(glm::mat4{1.0f}, DOOR_SIZE);
+                      * glm::scale(glm::mat4{1.0f}, DOOR_SIZE)
+                      * door_model_space;
         ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
         ub_data.userInput[3] = 4;
         ub_data.materialProperties = {0.2f, 0.7f, 0.3f, 12.0f};
         vklCopyDataIntoHostCoherentBuffer(ub_door, &ub_data, sizeof(UniformBuffer));
+
+        // Static frame stays fixed while the door leaf rotates.
+        if (use_loaded_door_model && draw_static_door_frame) {
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, door_runtime_base_position)
+                                  * glm::scale(glm::mat4{1.0f}, DOOR_SIZE)
+                                  * door_model_space;
+            ub_data.userInput[3] = 4;
+            ub_data.materialProperties = {0.2f, 0.7f, 0.3f, 12.0f};
+        } else {
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -20.0f, 0.0f));
+            ub_data.userInput[3] = 5;
+            ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+        }
+        ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+        vklCopyDataIntoHostCoherentBuffer(ub_door_frame, &ub_data, sizeof(UniformBuffer));
 
         // Sensor
         ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, SENSOR_POSITION) * glm::scale(glm::mat4{1.0f}, SENSOR_SCALE);
@@ -1601,14 +2268,31 @@ int main(int argc, char** argv) {
                                       * glm::scale(glm::mat4{1.0f}, glm::vec3(BEAM_RADIUS, segment_length, BEAM_RADIUS));
                 ub_data.userInput[3] = 3;
                 ub_data.materialProperties = {1.0f, 1.0f, 0.0f, 4.0f};
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                vklCopyDataIntoHostCoherentBuffer(ub_beam_segments[i], &ub_data, sizeof(UniformBuffer));
+
+                // Slightly enlarged transparent shell for glow.
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, segment_center)
+                                      * glm::rotate(glm::mat4{1.0f}, segment_angle, glm::vec3(0.0f, 1.0f, 0.0f))
+                                      * glm::rotate(glm::mat4{1.0f}, glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f))
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(BEAM_GLOW_RADIUS, segment_length, BEAM_GLOW_RADIUS));
+                ub_data.userInput[3] = 6;
+                ub_data.materialProperties = {1.0f, 1.0f, 0.0f, 0.42f};
             } else {
                 ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -20.0f, 0.0f))
                                       * glm::scale(glm::mat4{1.0f}, glm::vec3(BEAM_RADIUS, 0.01f, BEAM_RADIUS));
                 ub_data.userInput[3] = 0;
-                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                ub_data.materialProperties = {0.35f, 0.35f, 0.35f, 1.0f};
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                vklCopyDataIntoHostCoherentBuffer(ub_beam_segments[i], &ub_data, sizeof(UniformBuffer));
+
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -20.0f, 0.0f))
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(BEAM_GLOW_RADIUS, 0.01f, BEAM_GLOW_RADIUS));
+                ub_data.userInput[3] = 6;
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 0.0f};
             }
             ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
-            vklCopyDataIntoHostCoherentBuffer(ub_beam_segments[i], &ub_data, sizeof(UniformBuffer));
+            vklCopyDataIntoHostCoherentBuffer(ub_beam_glow_segments[i], &ub_data, sizeof(UniformBuffer));
         }
 
         ub_data.userInput[3] = 0;
@@ -1620,24 +2304,354 @@ int main(int argc, char** argv) {
             vklCopyDataIntoHostCoherentBuffer(ub_label_strokes[i], &ub_data, sizeof(UniformBuffer));
         }
 
+        const glm::mat4 panel_basis = glm::mat4(1.0f);
+
+        if (has_won) {
+            ub_data.userInput[0] = 0;
+            ub_data.userInput[1] = 0;
+            ub_data.userInput[2] = 0;
+            ub_data.userInput[3] = 5;
+            ub_data.viewProjMatrix = glm::mat4(1.0f);
+            ub_data.cameraPosition = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, panel_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_PANEL_WIDTH, WIN_PANEL_HEIGHT, WIN_PANEL_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 0.40f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_panel, &ub_data, sizeof(UniformBuffer));
+
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, replay_button_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_BUTTON_WIDTH, WIN_BUTTON_HEIGHT, WIN_BUTTON_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 1.0f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_replay, &ub_data, sizeof(UniformBuffer));
+
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, exit_button_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_BUTTON_WIDTH, WIN_BUTTON_HEIGHT, WIN_BUTTON_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 1.0f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_exit, &ub_data, sizeof(UniformBuffer));
+
+            for (size_t i = 0; i < win_message_strokes.size(); ++i) {
+                const glm::vec3 text_center = panel_center
+                                            + glm::vec3(win_message_strokes[i].center.x, -(win_message_strokes[i].center.y + WIN_MESSAGE_Y_OFFSET), -0.03f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          win_message_strokes[i].size.x,
+                                          win_message_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_win_message_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            for (size_t i = 0; i < replay_button_strokes.size(); ++i) {
+                const glm::vec3 text_center = replay_button_center
+                                            + glm::vec3(replay_button_strokes[i].center.x, -replay_button_strokes[i].center.y, -0.02f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          replay_button_strokes[i].size.x,
+                                          replay_button_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_replay_button_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            for (size_t i = 0; i < exit_button_strokes.size(); ++i) {
+                const glm::vec3 text_center = exit_button_center
+                                            + glm::vec3(exit_button_strokes[i].center.x, -exit_button_strokes[i].center.y, -0.02f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          exit_button_strokes[i].size.x,
+                                          exit_button_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_exit_button_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            // Lose message strokes hidden while win panel is shown
+            for (size_t i = 0; i < lose_message_strokes.size(); ++i) {
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -30.0f, 0.0f))
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(lose_message_strokes[i].size.x, lose_message_strokes[i].size.y, WIN_TEXT_DEPTH));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {1.0f, 0.3f, 0.2f, 18.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_lose_message_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+        } else if (has_lost) {
+            ub_data.userInput[0] = 0;
+            ub_data.userInput[1] = 0;
+            ub_data.userInput[2] = 0;
+            ub_data.userInput[3] = 5;
+            ub_data.viewProjMatrix = glm::mat4(1.0f);
+            ub_data.cameraPosition = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, panel_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_PANEL_WIDTH, WIN_PANEL_HEIGHT, WIN_PANEL_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 0.40f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_panel, &ub_data, sizeof(UniformBuffer));
+
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, replay_button_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_BUTTON_WIDTH, WIN_BUTTON_HEIGHT, WIN_BUTTON_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 1.0f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_replay, &ub_data, sizeof(UniformBuffer));
+
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, exit_button_center)
+                                  * panel_basis
+                                  * glm::scale(glm::mat4{1.0f}, glm::vec3(WIN_BUTTON_WIDTH, WIN_BUTTON_HEIGHT, WIN_BUTTON_DEPTH));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 1.0f};
+            vklCopyDataIntoHostCoherentBuffer(ub_win_exit, &ub_data, sizeof(UniformBuffer));
+
+            // "Try again." message
+            for (size_t i = 0; i < lose_message_strokes.size(); ++i) {
+                const glm::vec3 text_center = panel_center
+                                            + glm::vec3(lose_message_strokes[i].center.x, -(lose_message_strokes[i].center.y + WIN_MESSAGE_Y_OFFSET), -0.03f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          lose_message_strokes[i].size.x,
+                                          lose_message_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_lose_message_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            // Win message strokes hidden
+            for (size_t i = 0; i < win_message_strokes.size(); ++i) {
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -30.0f, 0.0f))
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(win_message_strokes[i].size.x, win_message_strokes[i].size.y, WIN_TEXT_DEPTH));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.2f, 1.0f, 0.4f, 18.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_win_message_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            // Replay/Exit button labels (light colour on lose panel)
+            for (size_t i = 0; i < replay_button_strokes.size(); ++i) {
+                const glm::vec3 text_center = replay_button_center
+                                            + glm::vec3(replay_button_strokes[i].center.x, -replay_button_strokes[i].center.y, -0.02f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          replay_button_strokes[i].size.x,
+                                          replay_button_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_replay_button_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+
+            for (size_t i = 0; i < exit_button_strokes.size(); ++i) {
+                const glm::vec3 text_center = exit_button_center
+                                            + glm::vec3(exit_button_strokes[i].center.x, -exit_button_strokes[i].center.y, -0.02f);
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, text_center)
+                                      * panel_basis
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                          exit_button_strokes[i].size.x,
+                                          exit_button_strokes[i].size.y,
+                                          WIN_TEXT_DEPTH
+                                      ));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                vklCopyDataIntoHostCoherentBuffer(ub_exit_button_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+        } else {
+            // Neither won nor lost: hide all overlay geometry
+            ub_data.userInput[3] = 5;
+            const glm::vec3 hide_pos = glm::vec3(0.0f, -30.0f, 0.0f);
+            auto hideMat = [&]() {
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, hide_pos) * glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f));
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            };
+            hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_win_panel,  &ub_data, sizeof(UniformBuffer));
+            hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_win_replay, &ub_data, sizeof(UniformBuffer));
+            hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_win_exit,   &ub_data, sizeof(UniformBuffer));
+            for (size_t i = 0; i < win_message_strokes.size();  ++i) { hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_win_message_strokes[i],  &ub_data, sizeof(UniformBuffer)); }
+            for (size_t i = 0; i < lose_message_strokes.size(); ++i) { hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_lose_message_strokes[i], &ub_data, sizeof(UniformBuffer)); }
+            for (size_t i = 0; i < replay_button_strokes.size();++i) { hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_replay_button_strokes[i],&ub_data, sizeof(UniformBuffer)); }
+            for (size_t i = 0; i < exit_button_strokes.size();  ++i) { hideMat(); vklCopyDataIntoHostCoherentBuffer(ub_exit_button_strokes[i],  &ub_data, sizeof(UniformBuffer)); }
+        }
+
+        // ------- Timer HUD (upper-right, always rendered unless game over) -------
+        {
+            const int seconds_left = static_cast<int>(std::ceil(time_remaining));
+            const int display_value = std::clamp(seconds_left, 0, 999);
+            const std::array<int, TIMER_DIGITS> digit_values = {
+                display_value / 100,
+                (display_value / 10) % 10,
+                display_value % 10
+            };
+            const std::array<bool, TIMER_DIGITS> show_digit = {
+                display_value >= 100,
+                display_value >= 10,
+                true
+            };
+            const std::array<std::vector<PanelStroke2D>, TIMER_DIGITS> digit_strokes = {
+                createTimerDigitStrokes(digit_values[0]),
+                createTimerDigitStrokes(digit_values[1]),
+                createTimerDigitStrokes(digit_values[2])
+            };
+
+            // True 2D overlay in NDC clip space (independent of camera transform).
+            // Y is flipped in this renderer setup, therefore negative Y places content toward the top.
+            const glm::vec3 hud_center = glm::vec3(0.78f, -0.72f, 0.01f);
+            const glm::vec3 hidden_overlay_pos = glm::vec3(2.0f, 2.0f, 0.0f);
+            const glm::mat4 overlay_view_proj = glm::mat4(1.0f);
+            const glm::vec4 overlay_camera_pos = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+
+            const bool show_timer = !has_won && !has_lost && g_timer_enabled;
+
+            // Small background chip for the digit
+            ub_data.userInput[3] = 0;
+            ub_data.userInput[0] = 0;
+            ub_data.userInput[1] = 0;
+            ub_data.userInput[2] = 0;
+            ub_data.viewProjMatrix = overlay_view_proj;
+            ub_data.cameraPosition = overlay_camera_pos;
+            if (show_timer) {
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, hud_center)
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(0.125f, 0.055f, 0.001f));
+                ub_data.materialProperties = {0.72f, 0.72f, 0.72f, 1.0f};
+            } else {
+                ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, hidden_overlay_pos)
+                                      * glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f));
+                ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+            }
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            vklCopyDataIntoHostCoherentBuffer(ub_timer_bg, &ub_data, sizeof(UniformBuffer));
+
+            // Digit strokes
+            const float timer_colour_r = (time_remaining <= 2.0f) ? 1.0f : 0.9f;
+            const float timer_colour_g = (time_remaining <= 2.0f) ? 0.2f : 0.9f;
+            const float timer_colour_b = (time_remaining <= 2.0f) ? 0.1f : 0.1f;
+            for (int i = 0; i < MAX_TIMER_TOTAL_STROKES; ++i) {
+                ub_data.userInput[3] = 5;
+                const int digit_idx = i / MAX_TIMER_STROKES;
+                const int stroke_idx = i % MAX_TIMER_STROKES;
+                const float digit_offset_x = (static_cast<float>(digit_idx) - 1.0f) * 0.045f;
+                const PanelStroke2D& stroke = digit_strokes[digit_idx][stroke_idx];
+
+                if (show_timer && show_digit[digit_idx] && stroke.size.x > 0.0f) {
+                    const glm::vec3 seg_center = hud_center
+                                               + glm::vec3(digit_offset_x + stroke.center.x, -stroke.center.y, -0.001f - 0.5f * WIN_TEXT_DEPTH);
+                    ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, seg_center)
+                                          * glm::scale(glm::mat4{1.0f}, glm::vec3(
+                                              stroke.size.x,
+                                              stroke.size.y,
+                                              WIN_TEXT_DEPTH
+                                          ));
+                    ub_data.materialProperties = {1.0f, 1.0f, 1.0f, 1.0f};
+                } else {
+                    ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, hidden_overlay_pos)
+                                          * glm::scale(glm::mat4{1.0f}, glm::vec3(0.01f));
+                    ub_data.materialProperties = {0.0f, 0.0f, 0.0f, 1.0f};
+                }
+                ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+                vklCopyDataIntoHostCoherentBuffer(ub_timer_strokes[i], &ub_data, sizeof(UniformBuffer));
+            }
+        }
+
+        // Restore world-space camera data for non-overlay objects in subsequent updates.
+        ub_data.viewProjMatrix = view_proj;
+        ub_data.cameraPosition = glm::vec4{player_position, 1.0f};
+
+        // Fullscreen bloom overlay from a separate sampled render target.
+        // Rendered through the alpha-blended glow pipeline in shader mode 7.
+        ub_data.viewProjMatrix = glm::mat4(1.0f);
+        ub_data.cameraPosition = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+        ub_data.modelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 2.0f, 0.001f));
+        ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+        ub_data.materialProperties = glm::vec4(1.0f, 0.0f, 0.0f, 0.72f);
+        ub_data.userInput[3] = 7;
+        vklCopyDataIntoHostCoherentBuffer(ub_bloom_overlay, &ub_data, sizeof(UniformBuffer));
+
+        // Restore world-space camera data.
+        ub_data.viewProjMatrix = view_proj;
+        ub_data.cameraPosition = glm::vec4{player_position, 1.0f};
+
         // Wait until we get an image from the swapchain to render into:
         vklWaitForNextSwapchainImage();
+
+        // Copy the current swapchain image into a sampled texture for mirror reflections.
+        {
+            const uint32_t current_image_idx = vklGetCurrentSwapChainImageIndex();
+            const bool src_was_presented_before = swapchain_image_presented_once[current_image_idx];
+            copySwapchainImageToMirrorTexture(
+                vk_device,
+                vk_queue,
+                command_pool,
+                swapchain_image_handles[current_image_idx],
+                mirror_scene_image,
+                swapchain_create_info.imageExtent.width,
+                swapchain_create_info.imageExtent.height,
+                first_mirror_scene_copy,
+                src_was_presented_before
+            );
+            swapchain_image_presented_once[current_image_idx] = true;
+            first_mirror_scene_copy = false;
+        }
+
         vklStartRecordingCommands();
 
 
         VkPipeline selected_cornell_pipeline = cornell_pipelines[g_polygon_mode_index][g_culling_index];
         drawGeometryWithMaterial(selected_cornell_pipeline, cornell_geometry, ds_cornell);
-        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_button);
-        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_door);
-        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_1);
-        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_2);
-        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], sphere_geometry, ds_sensor);
-        for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
-            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], beam_cylinder_geometry, ds_beam_segments[i]);
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], door_frame_geometry, ds_door_frame);
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], door_geometry, ds_door);
+
+        if (!has_won && !has_lost) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_button);
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_1);
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_2);
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], sphere_geometry, ds_sensor);
+            for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
+                drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], beam_cylinder_geometry, ds_beam_segments[i]);
+            }
+            for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
+                drawGeometryWithMaterial(glow_pipelines[g_polygon_mode_index][g_culling_index], beam_cylinder_geometry, ds_beam_glow_segments[i]);
+            }
+            for (size_t i = 0; i < ds_label_strokes.size(); ++i) {
+                drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_label_strokes[i]);
+            }
         }
-        for (size_t i = 0; i < ds_label_strokes.size(); ++i) {
-            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_label_strokes[i]);
+        // Win / lose overlay
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_win_panel);
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_win_replay);
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_win_exit);
+        for (size_t i = 0; i < ds_win_message_strokes.size(); ++i) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_win_message_strokes[i]);
         }
+        for (size_t i = 0; i < ds_lose_message_strokes.size(); ++i) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_lose_message_strokes[i]);
+        }
+        for (size_t i = 0; i < ds_replay_button_strokes.size(); ++i) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_replay_button_strokes[i]);
+        }
+        for (size_t i = 0; i < ds_exit_button_strokes.size(); ++i) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_exit_button_strokes[i]);
+        }
+        // Timer HUD
+        drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_timer_bg);
+        for (int i = 0; i < MAX_TIMER_TOTAL_STROKES; ++i) {
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_timer_strokes[i]);
+        }
+        // Bloom/glow composite from the sampled render target.
+        drawGeometryWithMaterial(glow_pipelines[g_polygon_mode_index][g_culling_index], box_geometry, ds_bloom_overlay);
 
         vklEndRecordingCommands();
         // Present rendered image to the screen:
@@ -1666,23 +2680,53 @@ int main(int argc, char** argv) {
     destroyGeometryGpuMemory(cornell_geometry);
     for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
         vklDestroyHostCoherentBufferAndItsBackingMemory(ub_beam_segments[i]);
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub_beam_glow_segments[i]);
     }
     for (VkBuffer ub : ub_label_strokes) {
         vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
     }
+    for (VkBuffer ub : ub_win_message_strokes) {
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
+    }
+    for (VkBuffer ub : ub_lose_message_strokes) {
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
+    }
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_timer_bg);
+    for (VkBuffer ub : ub_timer_strokes) {
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
+    }
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_bloom_overlay);
+    for (VkBuffer ub : ub_replay_button_strokes) {
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
+    }
+    for (VkBuffer ub : ub_exit_button_strokes) {
+        vklDestroyHostCoherentBufferAndItsBackingMemory(ub);
+    }
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_win_exit);
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_win_replay);
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_win_panel);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_mirror_2);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_mirror_1);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_sensor);
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_door_frame);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_door);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_button);
     destroyGeometryGpuMemory(beam_cylinder_geometry);
     destroyGeometryGpuMemory(sphere_geometry);
+    destroyGeometryGpuMemory(door_frame_geometry);
+    destroyGeometryGpuMemory(door_geometry);
     destroyGeometryGpuMemory(box_geometry);
     vkDestroySampler(vk_device, sampler, nullptr);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_pointlight);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_dirlight);
     vkDestroyImageView(vk_device, tiles_diffuse.view, nullptr);
     vklDestroyDeviceLocalImageAndItsBackingMemory(tiles_diffuse.image);
+    vkDestroyImageView(vk_device, mirror_scene_view, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(mirror_scene_image);
+    vkDestroyImageView(vk_device, environment_cubemap.view, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(environment_cubemap.image);
+    vkDestroyImageView(vk_device, wooden_floor_texture.view, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(wooden_floor_texture.image);
     vkDestroyImageView(vk_device, wood_texture.view, nullptr);
     vklDestroyDeviceLocalImageAndItsBackingMemory(wood_texture.image);
     vkDestroyCommandPool(vk_device, command_pool, nullptr);
@@ -1690,6 +2734,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < POLYMODES; ++i) {
         for (size_t j = 0; j < CULLMODES; ++j) {
             vklDestroyGraphicsPipeline(cornell_pipelines[i][j]);
+            vklDestroyGraphicsPipeline(glow_pipelines[i][j]);
             for (size_t k = 0; k < ILLUMODES; ++k) {
                 vklDestroyGraphicsPipeline(custom_pipelines[i][j][k]);
             }
@@ -1981,6 +3026,18 @@ void writeDescriptorSet(VkDevice device, VkDescriptorSet descriptor_set, VkBuffe
         /* descriptorType: */ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         /* pImageInfo: */ &texture_info, nullptr, nullptr}};
 
+    if (g_environment_cubemap_view != VK_NULL_HANDLE && g_environment_cubemap_sampler != VK_NULL_HANDLE) {
+        VkDescriptorImageInfo cubemap_info = {};
+        cubemap_info.imageView = g_environment_cubemap_view;
+        cubemap_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        cubemap_info.sampler = g_environment_cubemap_sampler;
+
+        writes.push_back(VkWriteDescriptorSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr, descriptor_set,
+            /* dstBinding: */ 4u, 0u, 1u,
+            /* descriptorType: */ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            /* pImageInfo: */ &cubemap_info, nullptr, nullptr});
+    }
+
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0u, nullptr);
 }
 
@@ -2041,7 +3098,11 @@ VkImageView createImageViewForImage(VkDevice device, VkImage image, VkImageViewT
 }
 
 ImageAndView loadImage(VkDevice device, VkQueue queue, VkCommandPool command_pool, std::string image_file_name) {
-    std::vector<std::string> image_file_paths = gcgFindTextureFiles({image_file_name});
+    return loadImage(device, queue, command_pool, std::vector<std::string>{image_file_name});
+}
+
+ImageAndView loadImage(VkDevice device, VkQueue queue, VkCommandPool command_pool, const std::vector<std::string>& image_file_names) {
+    std::vector<std::string> image_file_paths = gcgFindTextureFiles(image_file_names);
 
     /* --------------------------------------------- */
     // Subtask 5.5: Load DDS Textures into Images
@@ -2223,4 +3284,145 @@ ImageAndView loadImage(VkDevice device, VkQueue queue, VkCommandPool command_poo
     return ImageAndView{
         image, createImageViewForImage(device, image, image_layers == 6 ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D, image_info.imageFormat)
     };
+}
+
+void copySwapchainImageToMirrorTexture(VkDevice device, VkQueue queue, VkCommandPool command_pool, VkImage src_swapchain_image, VkImage dst_texture_image,
+    uint32_t width, uint32_t height, bool first_copy, bool src_was_presented_before) {
+    VkCommandBufferAllocateInfo alloc_info = {};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1u;
+
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    VkResult result = vkAllocateCommandBuffers(device, &alloc_info, &cb);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate command buffer for mirror texture copy.");
+    }
+
+    VkCommandBufferBeginInfo begin_info = {};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cb, &begin_info);
+
+    VkImageMemoryBarrier barriers_to_transfer[2] = {};
+    barriers_to_transfer[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers_to_transfer[0].srcAccessMask = src_was_presented_before ? VK_ACCESS_MEMORY_READ_BIT : 0;
+    barriers_to_transfer[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    // First use of a swapchain image can be UNDEFINED. After first present/copy cycle it is PRESENT.
+    barriers_to_transfer[0].oldLayout = src_was_presented_before ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED;
+    barriers_to_transfer[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barriers_to_transfer[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_to_transfer[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_to_transfer[0].image = src_swapchain_image;
+    barriers_to_transfer[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barriers_to_transfer[0].subresourceRange.baseMipLevel = 0;
+    barriers_to_transfer[0].subresourceRange.levelCount = 1;
+    barriers_to_transfer[0].subresourceRange.baseArrayLayer = 0;
+    barriers_to_transfer[0].subresourceRange.layerCount = 1;
+
+    barriers_to_transfer[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers_to_transfer[1].srcAccessMask = 0;
+    barriers_to_transfer[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers_to_transfer[1].oldLayout = first_copy ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barriers_to_transfer[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barriers_to_transfer[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_to_transfer[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_to_transfer[1].image = dst_texture_image;
+    barriers_to_transfer[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barriers_to_transfer[1].subresourceRange.baseMipLevel = 0;
+    barriers_to_transfer[1].subresourceRange.levelCount = 1;
+    barriers_to_transfer[1].subresourceRange.baseArrayLayer = 0;
+    barriers_to_transfer[1].subresourceRange.layerCount = 1;
+
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        2, barriers_to_transfer);
+
+    VkImageCopy copy_region = {};
+    copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copy_region.srcSubresource.mipLevel = 0;
+    copy_region.srcSubresource.baseArrayLayer = 0;
+    copy_region.srcSubresource.layerCount = 1;
+    copy_region.srcOffset = {0, 0, 0};
+    copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copy_region.dstSubresource.mipLevel = 0;
+    copy_region.dstSubresource.baseArrayLayer = 0;
+    copy_region.dstSubresource.layerCount = 1;
+    copy_region.dstOffset = {0, 0, 0};
+    copy_region.extent = {width, height, 1};
+    vkCmdCopyImage(cb,
+        src_swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        dst_texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &copy_region);
+
+    VkImageMemoryBarrier barriers_from_transfer[2] = {};
+    barriers_from_transfer[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers_from_transfer[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers_from_transfer[0].dstAccessMask = 0;
+    barriers_from_transfer[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barriers_from_transfer[0].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barriers_from_transfer[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_from_transfer[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_from_transfer[0].image = src_swapchain_image;
+    barriers_from_transfer[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barriers_from_transfer[0].subresourceRange.baseMipLevel = 0;
+    barriers_from_transfer[0].subresourceRange.levelCount = 1;
+    barriers_from_transfer[0].subresourceRange.baseArrayLayer = 0;
+    barriers_from_transfer[0].subresourceRange.layerCount = 1;
+
+    barriers_from_transfer[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barriers_from_transfer[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers_from_transfer[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers_from_transfer[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barriers_from_transfer[1].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barriers_from_transfer[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_from_transfer[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers_from_transfer[1].image = dst_texture_image;
+    barriers_from_transfer[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barriers_from_transfer[1].subresourceRange.baseMipLevel = 0;
+    barriers_from_transfer[1].subresourceRange.levelCount = 1;
+    barriers_from_transfer[1].subresourceRange.baseArrayLayer = 0;
+    barriers_from_transfer[1].subresourceRange.layerCount = 1;
+
+    vkCmdPipelineBarrier(cb,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        2, barriers_from_transfer);
+
+    vkEndCommandBuffer(cb);
+
+    VkFenceCreateInfo fence_info = {};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence = VK_NULL_HANDLE;
+    result = vkCreateFence(device, &fence_info, nullptr, &fence);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create fence for mirror texture copy.");
+    }
+
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1u;
+    submit_info.pCommandBuffers = &cb;
+    result = vkQueueSubmit(queue, 1u, &submit_info, fence);
+    if (result != VK_SUCCESS) {
+        vkDestroyFence(device, fence, nullptr);
+        vkFreeCommandBuffers(device, command_pool, 1u, &cb);
+        throw std::runtime_error("Failed to submit mirror texture copy command buffer.");
+    }
+
+    result = vkWaitForFences(device, 1u, &fence, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS) {
+        vkDestroyFence(device, fence, nullptr);
+        vkFreeCommandBuffers(device, command_pool, 1u, &cb);
+        throw std::runtime_error("Failed to wait for mirror texture copy fence.");
+    }
+
+    vkDestroyFence(device, fence, nullptr);
+    vkFreeCommandBuffers(device, command_pool, 1u, &cb);
 }

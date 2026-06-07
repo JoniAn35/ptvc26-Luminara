@@ -9,6 +9,7 @@
 
 
 #include <glm/glm.hpp>
+#include <string>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -105,6 +106,24 @@ GeometryData createBezierCylinderGeometry(unsigned int segments, std::vector<glm
  *	@return all sphere data
  */
 GeometryData createSphereGeometry(uint32_t longitude_segments, uint32_t latitude_segments, float radius);
+
+/*!
+ *	Loads triangle geometry from a Wavefront OBJ file.
+ *	Supports positions, normals, texture coordinates and face elements.
+ *	Faces with more than 3 vertices are triangulated using a fan.
+ *	@param model_file_path	Path to an OBJ file relative to the project root.
+ *	@return all loaded geometry data
+ */
+GeometryData loadObjGeometry(const std::string& model_file_path);
+
+/*!
+ *\tLoads triangle geometry from selected object names in a Wavefront OBJ file.
+ *\tOnly faces that belong to one of include_object_names are imported.
+ *\t@param model_file_path\t\t\tPath to an OBJ file relative to the project root.
+ *\t@param include_object_names\tOBJ object names from `o <name>` entries that should be loaded.
+ *\t@return all loaded geometry data
+ */
+GeometryData loadObjGeometry(const std::string& model_file_path, const std::vector<std::string>& include_object_names);
 
 
 /*!

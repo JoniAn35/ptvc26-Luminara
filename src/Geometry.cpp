@@ -7,8 +7,16 @@
  */
 
 #include "Geometry.h"
+#include "PathUtils.h"
 #include "Utils.h"
 #include <glm/gtc/constants.hpp>
+
+#include <array>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #undef min
 #undef max
@@ -20,6 +28,222 @@ constexpr float CORNELL_LEFT_B = 0.54f;
 constexpr float CORNELL_RIGHT_R = 0.58f;
 constexpr float CORNELL_RIGHT_G = 0.57f;
 constexpr float CORNELL_RIGHT_B = 0.54f;
+
+namespace {
+struct ObjVertexKey {
+	int positionIndex;
+	int texcoordIndex;
+	int normalIndex;
+
+	bool operator==(const ObjVertexKey& other) const {
+		return positionIndex == other.positionIndex
+			&& texcoordIndex == other.texcoordIndex
+			&& normalIndex == other.normalIndex;
+	}
+};
+
+struct ObjVertexKeyHash {
+	std::size_t operator()(const ObjVertexKey& key) const {
+		std::size_t h = std::hash<int>{}(key.positionIndex);
+		h ^= std::hash<int>{}(key.texcoordIndex) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		h ^= std::hash<int>{}(key.normalIndex) + 0x9e3779b9 + (h << 6) + (h >> 2);
+		return h;
+	}
+};
+
+int resolveObjIndex(int objIndex, int count) {
+	if (objIndex > 0) {
+		return objIndex - 1;
+	}
+	if (objIndex < 0) {
+		return count + objIndex;
+	}
+	return -1;
+}
+
+std::array<int, 3> parseObjVertexToken(
+	const std::string& token,
+	int positionCount,
+	int texcoordCount,
+	int normalCount
+) {
+	std::array<int, 3> result{-1, -1, -1};
+	std::stringstream ss(token);
+	std::string indexString;
+	int component = 0;
+
+	while (std::getline(ss, indexString, '/') && component < 3) {
+		if (!indexString.empty()) {
+			const int parsed = std::stoi(indexString);
+			if (component == 0) result[0] = resolveObjIndex(parsed, positionCount);
+			if (component == 1) result[1] = resolveObjIndex(parsed, texcoordCount);
+			if (component == 2) result[2] = resolveObjIndex(parsed, normalCount);
+		}
+		++component;
+	}
+
+	return result;
+}
+} // namespace
+
+GeometryData loadObjGeometry(const std::string& model_file_path) {
+	return loadObjGeometry(model_file_path, {});
+}
+
+GeometryData loadObjGeometry(const std::string& model_file_path, const std::vector<std::string>& include_object_names) {
+	const std::string resolved_path = gcgFindFileInParentDir(model_file_path);
+	if (resolved_path.empty()) {
+		VKL_EXIT_WITH_ERROR("Could not find model file: " << model_file_path);
+	}
+
+	std::ifstream file(resolved_path);
+	if (!file.good()) {
+		VKL_EXIT_WITH_ERROR("Could not open model file: " << resolved_path);
+	}
+
+	std::vector<glm::vec3> obj_positions;
+	std::vector<glm::vec3> obj_normals;
+	std::vector<glm::vec2> obj_texcoords;
+
+	GeometryData data;
+	std::unordered_map<ObjVertexKey, uint32_t, ObjVertexKeyHash> unique_vertices;
+	const std::unordered_set<std::string> include_objects_set(include_object_names.begin(), include_object_names.end());
+	const bool include_all_objects = include_objects_set.empty();
+	std::string current_object_name;
+
+	std::string line;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') {
+			continue;
+		}
+
+		std::istringstream line_stream(line);
+		std::string tag;
+		line_stream >> tag;
+
+		if (tag == "v") {
+			glm::vec3 p(0.0f);
+			line_stream >> p.x >> p.y >> p.z;
+			obj_positions.push_back(p);
+		}
+		else if (tag == "o") {
+			line_stream >> current_object_name;
+		}
+		else if (tag == "vn") {
+			glm::vec3 n(0.0f);
+			line_stream >> n.x >> n.y >> n.z;
+			if (glm::length(n) > 0.0f) {
+				n = glm::normalize(n);
+			}
+			obj_normals.push_back(n);
+		}
+		else if (tag == "vt") {
+			glm::vec2 t(0.0f);
+			line_stream >> t.x >> t.y;
+			obj_texcoords.push_back(glm::vec2(t.x, 1.0f - t.y));
+		}
+		else if (tag == "f") {
+			if (!include_all_objects) {
+				if (current_object_name.empty() || include_objects_set.find(current_object_name) == include_objects_set.end()) {
+					continue;
+				}
+			}
+
+			std::vector<std::array<int, 3>> face_vertices;
+			std::string vertex_token;
+			while (line_stream >> vertex_token) {
+				face_vertices.push_back(parseObjVertexToken(
+					vertex_token,
+					static_cast<int>(obj_positions.size()),
+					static_cast<int>(obj_texcoords.size()),
+					static_cast<int>(obj_normals.size())
+				));
+			}
+
+			if (face_vertices.size() < 3) {
+				continue;
+			}
+
+			for (size_t i = 1; i + 1 < face_vertices.size(); ++i) {
+				const std::array<std::array<int, 3>, 3> tri = {
+					face_vertices[0],
+					face_vertices[i],
+					face_vertices[i + 1]
+				};
+
+				for (const auto& v : tri) {
+					if (v[0] < 0 || v[0] >= static_cast<int>(obj_positions.size())) {
+						VKL_EXIT_WITH_ERROR("OBJ face uses an invalid position index in: " << resolved_path);
+					}
+
+					ObjVertexKey key{v[0], v[1], v[2]};
+					auto it = unique_vertices.find(key);
+					if (it == unique_vertices.end()) {
+						const uint32_t new_index = static_cast<uint32_t>(data.positions.size());
+						unique_vertices.emplace(key, new_index);
+
+						data.positions.push_back(obj_positions[v[0]]);
+						data.textureCoordinates.push_back(
+							(v[1] >= 0 && v[1] < static_cast<int>(obj_texcoords.size()))
+								? obj_texcoords[v[1]]
+								: glm::vec2(0.0f)
+						);
+						data.normals.push_back(
+							(v[2] >= 0 && v[2] < static_cast<int>(obj_normals.size()))
+								? obj_normals[v[2]]
+								: glm::vec3(0.0f)
+						);
+
+						data.indices.push_back(new_index);
+					}
+					else {
+						data.indices.push_back(it->second);
+					}
+				}
+			}
+		}
+	}
+
+	if (data.positions.empty() || data.indices.empty()) {
+		VKL_EXIT_WITH_ERROR("OBJ loader produced empty geometry for file: " << resolved_path);
+	}
+
+	bool has_non_zero_normals = false;
+	for (const auto& n : data.normals) {
+		if (glm::dot(n, n) > 0.0f) {
+			has_non_zero_normals = true;
+			break;
+		}
+	}
+
+	if (!has_non_zero_normals) {
+		data.normals.assign(data.positions.size(), glm::vec3(0.0f));
+		for (size_t i = 0; i + 2 < data.indices.size(); i += 3) {
+			const uint32_t i0 = data.indices[i];
+			const uint32_t i1 = data.indices[i + 1];
+			const uint32_t i2 = data.indices[i + 2];
+
+			const glm::vec3 e1 = data.positions[i1] - data.positions[i0];
+			const glm::vec3 e2 = data.positions[i2] - data.positions[i0];
+			const glm::vec3 face_normal = glm::cross(e1, e2);
+
+			data.normals[i0] += face_normal;
+			data.normals[i1] += face_normal;
+			data.normals[i2] += face_normal;
+		}
+
+		for (auto& n : data.normals) {
+			if (glm::dot(n, n) > 0.0f) {
+				n = glm::normalize(n);
+			}
+			else {
+				n = glm::vec3(0.0f, 1.0f, 0.0f);
+			}
+		}
+	}
+
+	return data;
+}
 
 GeometryData createBoxGeometry(float width, float height, float depth)
 {

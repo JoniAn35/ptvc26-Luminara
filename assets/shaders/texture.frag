@@ -29,6 +29,7 @@ layout (binding = 2) uniform PointLight {
 } pl_data;
 
 layout (binding = 3) uniform sampler2D diffuse_texture;
+layout (binding = 4) uniform samplerCube environment_cubemap;
 
 layout (location = 0) in VertexData {
 	vec3 positionWorld;
@@ -114,11 +115,91 @@ void main() {
 			discard;
 		}
 	}
+	if (ub_data.userInput[3] == 6) {
+		// Beam glow shell with hard core and soft edge fade.
+		vec3 viewDir = normalize(ub_data.cameraPosition.xyz - frag_in.positionWorld);
+		float facing = clamp(abs(dot(n, viewDir)), 0.0, 1.0);
+
+		// Sharp center plus wider halo.
+		float hardCore = pow(facing, 7.0);
+		float softHalo = pow(facing, 1.35);
+
+		vec3 glowColor = beamColor * (0.95 + 2.40 * hardCore + 0.90 * softHalo);
+		float glowAlpha = ub_data.illumination.a * (1.25 * hardCore + 0.75 * softHalo);
+		glowAlpha = clamp(glowAlpha, 0.0, 1.0);
+		out_color = vec4(glowColor, glowAlpha);
+		return;
+	}
+	if (ub_data.userInput[3] == 7) {
+		// Bloom composite: blur bright samples from a separate render target.
+		vec2 uv = clamp(frag_in.textureCoordinates, vec2(0.001), vec2(0.999));
+		vec2 texel = 1.0 / vec2(textureSize(diffuse_texture, 0));
+
+		float threshold = 0.82;
+		float radius = 1.75;
+		float intensity = 1.05;
+
+		vec2 offsets[13] = vec2[](
+			vec2( 0.0,  0.0),
+			vec2( 1.0,  0.0), vec2(-1.0,  0.0),
+			vec2( 0.0,  1.0), vec2( 0.0, -1.0),
+			vec2( 1.0,  1.0), vec2(-1.0,  1.0),
+			vec2( 1.0, -1.0), vec2(-1.0, -1.0),
+			vec2( 2.0,  0.0), vec2(-2.0,  0.0),
+			vec2( 0.0,  2.0), vec2( 0.0, -2.0)
+		);
+		float weights[13] = float[](
+			0.20,
+			0.11, 0.11,
+			0.11, 0.11,
+			0.08, 0.08,
+			0.08, 0.08,
+			0.04, 0.04,
+			0.04, 0.04
+		);
+
+		vec3 bloom = vec3(0.0);
+		for (int i = 0; i < 13; ++i) {
+			vec2 sampleUv = clamp(uv + offsets[i] * texel * radius, vec2(0.0), vec2(1.0));
+			vec3 sampleColor = texture(diffuse_texture, sampleUv).rgb;
+			float luminance = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
+
+			// Limit bloom to red-dominant highlights to avoid wall/ceiling bleed.
+			float redDominance = sampleColor.r - max(sampleColor.g, sampleColor.b);
+			float redMask = smoothstep(0.06, 0.20, redDominance);
+			float bright = clamp((luminance - threshold) / max(1.0 - threshold, 1e-4), 0.0, 1.0) * redMask;
+			bloom += sampleColor * bright * weights[i];
+		}
+
+		bloom *= intensity;
+		float bloomAlpha = clamp(max(max(bloom.r, bloom.g), bloom.b) * ub_data.illumination.a, 0.0, 1.0);
+		out_color = vec4(bloom, bloomAlpha);
+		return;
+	}
 	vec3 v = normalize(frag_in.positionWorld - ub_data.cameraPosition.xyz);
 	vec3 R = normalize(clampedReflect(v, n));
 	vec3 reflectionColor = getCornellBoxReflectionColor(frag_in.positionWorld, R);
+	if (ub_data.userInput[3] == 1) {
+		// Dynamic reflection approximation from the live scene texture.
+		vec3 samplePos = frag_in.positionWorld + R * 1.2;
+		vec4 clip = ub_data.viewProjMatrix * vec4(samplePos, 1.0);
+
+		vec4 baseClip = ub_data.viewProjMatrix * vec4(frag_in.positionWorld, 1.0);
+		vec2 baseUv = baseClip.xy / max(baseClip.w, 1e-5);
+		baseUv = baseUv * 0.5 + 0.5;
+		baseUv.x = 1.0 - baseUv.x;
+
+		vec2 reflectedUv = clip.xy / max(clip.w, 1e-5);
+		reflectedUv = reflectedUv * 0.5 + 0.5;
+		reflectedUv.x = 1.0 - reflectedUv.x;
+
+		vec2 finalUv = mix(baseUv, reflectedUv, 0.8);
+		finalUv = clamp(finalUv, vec2(0.0), vec2(1.0));
+		reflectionColor = texture(diffuse_texture, finalUv).rgb;
+	}
 	vec3 F0 = vec3(0.1); // <-- some kind of plastic
 	vec3 reflectivity = fresnelSchlick(dot(n, -v), F0);
+	float reflectionMask = 1.0;
 	vec3 diffuseColor = vec3(0.82, 0.82, 0.82);
 	if (ub_data.userInput[3] == 4) {
 		diffuseColor = vec3(0.20, 0.20, 0.22);
@@ -130,12 +211,36 @@ void main() {
 		diffuseColor = beamColor;
 	}
 	if (ub_data.userInput[3] == 1) {
-		// Mirror's "front" is local +X after transform. Darken only the opposite large face.
+		// Mirror front face is local +X after transform.
 		vec3 mirrorFrontNormalWS = normalize((ub_data.modelMatrixForNormals * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
 		float frontAlignment = dot(n, mirrorFrontNormalWS);
+		// Reflect only the front face.
+		reflectionMask = frontAlignment > 0.8 ? 1.0 : 0.0;
 		if (frontAlignment < -0.8) {
 			diffuseColor = vec3(0.05, 0.05, 0.06);
 		}
+	}
+
+	// 2D UI overlay path uses materialProperties directly.
+	if (ub_data.userInput[3] == 5) {
+		float a = clamp(ub_data.illumination.a, 0.0, 1.0);
+		if (a < 0.999) {
+			// Ordered 4x4 Bayer dither to emulate transparency without alpha blending.
+			int x = int(mod(gl_FragCoord.x, 4.0));
+			int y = int(mod(gl_FragCoord.y, 4.0));
+			float bayer[16] = float[16](
+				0.0,  8.0,  2.0, 10.0,
+				12.0, 4.0, 14.0,  6.0,
+				3.0, 11.0,  1.0,  9.0,
+				15.0, 7.0, 13.0,  5.0
+			);
+			float threshold = (bayer[y * 4 + x] + 0.5) / 16.0;
+			if (a < threshold) {
+				discard;
+			}
+		}
+		out_color = vec4(ub_data.illumination.rgb, 1.0);
+		return;
 	}
 	
 	// Start with ambient illumination contribution:
@@ -165,17 +270,7 @@ void main() {
 
 	// Write color for the current fragment:
 	out_color = vec4(color, 1.0);
-	if (ub_data.userInput[1] == 1) { // toggle fresnel
-		color =  mix(color, reflectionColor, reflectivity);
-        out_color = vec4(color, 1.0);
-    }
-
-	if (ub_data.userInput[0] == 1) { // toggle normals
-        vec3 scaledNormal = 0.5 * n + 0.5;
-        out_color = vec4(pow(scaledNormal.x, 2.2), pow(scaledNormal.y, 2.2), pow(scaledNormal.z, 2.2), 1.0);
-    }
-	if (ub_data.userInput[2] == 1) { // toggle texcoords
-        out_color = vec4(frag_in.textureCoordinates, 0, 1);
-    }
+	color = mix(color, reflectionColor, reflectivity * reflectionMask);
+	out_color = vec4(color, 1.0);
 }
 
