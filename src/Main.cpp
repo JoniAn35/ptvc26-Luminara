@@ -2438,6 +2438,8 @@ int main(int argc, char** argv) {
         vklCopyDataIntoHostCoherentBuffer(ub_mirror_2, &ub_data, sizeof(UniformBuffer));
 
         ub_data.userInput[3] = 0;
+        // Pass current time in color.w so the vertex shader can animate the beam.
+        ub_data.color.w = static_cast<float>(current_frame_time);
         for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
             if (i < static_cast<int>(beam_segments.size())) {
                 const glm::vec3 segment_vector = beam_segments[i].end - beam_segments[i].start;
