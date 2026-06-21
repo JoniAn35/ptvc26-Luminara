@@ -68,7 +68,7 @@ constexpr glm::vec3 MIRROR_SIZE = glm::vec3(0.05f, 0.3f, 0.3f);
 constexpr float MIRROR_HALF_LENGTH = MIRROR_SIZE.z * 0.5f;
 constexpr glm::vec3 MIRROR_PICK_SIZE = glm::vec3(0.45f, 0.95f, 1.05f);
 constexpr glm::vec3 MIRROR1_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, 1.1f);
-constexpr glm::vec3 MIRROR2_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, -0.45f);
+constexpr glm::vec3 MIRROR2_POSITION = glm::vec3(-0.686f, INTERACTIVE_OBJECTS_Y, -0.45f);
 constexpr float BEAM_SURFACE_BIAS = 0.001f;
 constexpr float BEAM_RADIUS = 0.01f;
 constexpr float BEAM_GLOW_RADIUS = 0.04f;
@@ -339,11 +339,6 @@ static bool g_left_clicked = false;
 static bool g_left_pressed = false;
 static double g_left_press_x = 0.0;
 static double g_left_press_y = 0.0;
-static bool g_fullscreen = false;
-static int g_windowed_x = 100;
-static int g_windowed_y = 100;
-static int g_windowed_width = 1280;
-static int g_windowed_height = 720;
 
 // Optional cubemap descriptor used by mirror reflections in the fragment shader.
 static VkImageView g_environment_cubemap_view = VK_NULL_HANDLE;
@@ -1165,14 +1160,10 @@ int main(int argc, char** argv) {
 
     GLFWwindow* window = nullptr;
     window = glfwCreateWindow(window_width, window_height, window_title.c_str(), monitor, nullptr);
-    g_fullscreen = (monitor != nullptr);
 
     if (!window) {
         VKL_EXIT_WITH_ERROR("No GLFW window created.");
     }
-
-    glfwGetWindowPos(window, &g_windowed_x, &g_windowed_y);
-    glfwGetWindowSize(window, &g_windowed_width, &g_windowed_height);
 
     VkResult result;
     VkInstance vk_instance = VK_NULL_HANDLE;              // To be set during Subtask 1.3
@@ -2120,23 +2111,6 @@ int main(int argc, char** argv) {
         if (key == GLFW_KEY_ESCAPE) {
             glfwSetWindowShouldClose(glfw_window, true);
         }
-        if (key == GLFW_KEY_F) {
-            GLFWmonitor* primary_monitor = glfwGetPrimaryMonitor();
-            if (primary_monitor) {
-                if (!g_fullscreen) {
-                    glfwGetWindowPos(glfw_window, &g_windowed_x, &g_windowed_y);
-                    glfwGetWindowSize(glfw_window, &g_windowed_width, &g_windowed_height);
-                    const GLFWvidmode* mode = glfwGetVideoMode(primary_monitor);
-                    if (mode) {
-                        glfwSetWindowMonitor(glfw_window, primary_monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-                        g_fullscreen = true;
-                    }
-                } else {
-                    glfwSetWindowMonitor(glfw_window, nullptr, g_windowed_x, g_windowed_y, g_windowed_width, g_windowed_height, 0);
-                    g_fullscreen = false;
-                }
-            }
-        }
         /* --------------------------------------------- */
         // Subtask 3.3: Interaction
         /* --------------------------------------------- */
@@ -2460,7 +2434,7 @@ int main(int argc, char** argv) {
         ub_data.reflectionViewProjMatrix = mirror_view_proj[0];
         vklCopyDataIntoHostCoherentBuffer(ub_mirror_1, &ub_data, sizeof(UniformBuffer));
 
-        float mirror_2_angle = glm::radians(45.0f * static_cast<float>(mirrors[1].rotationIndex));
+        float mirror_2_angle = glm::radians(225.0f * static_cast<float>(mirrors[1].rotationIndex));
         ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, MIRROR2_POSITION)
                               * glm::rotate(glm::mat4{1.0f}, mirror_2_angle, glm::vec3(0.0f, 1.0f, 0.0f))
                               * glm::scale(glm::mat4{1.0f}, MIRROR_SIZE);
