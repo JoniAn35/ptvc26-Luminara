@@ -341,6 +341,40 @@ static bool g_replay_requested = false;
 static double g_left_press_x = 0.0;
 static double g_left_press_y = 0.0;
 
+static bool g_is_fullscreen = false;
+static int g_windowed_x = 100;
+static int g_windowed_y = 100;
+static int g_windowed_width = 1000;
+static int g_windowed_height = 600;
+
+void toggleFullscreen(GLFWwindow* window) {
+    if (!window) {
+        return;
+    }
+
+    GLFWmonitor* primary_monitor = glfwGetPrimaryMonitor();
+    if (!primary_monitor) {
+        return;
+    }
+
+    if (!g_is_fullscreen) {
+        glfwGetWindowPos(window, &g_windowed_x, &g_windowed_y);
+        glfwGetWindowSize(window, &g_windowed_width, &g_windowed_height);
+
+        const GLFWvidmode* video_mode = glfwGetVideoMode(primary_monitor);
+        if (!video_mode) {
+            return;
+        }
+
+        glfwSetWindowMonitor(window, primary_monitor, 0, 0, video_mode->width, video_mode->height, video_mode->refreshRate);
+        g_is_fullscreen = true;
+    }
+    else {
+        glfwSetWindowMonitor(window, nullptr, g_windowed_x, g_windowed_y, g_windowed_width, g_windowed_height, GLFW_DONT_CARE);
+        g_is_fullscreen = false;
+    }
+}
+
 // Optional cubemap descriptor used by mirror reflections in the fragment shader.
 static VkImageView g_environment_cubemap_view = VK_NULL_HANDLE;
 static VkSampler g_environment_cubemap_sampler = VK_NULL_HANDLE;
@@ -1164,6 +1198,13 @@ int main(int argc, char** argv) {
 
     if (!window) {
         VKL_EXIT_WITH_ERROR("No GLFW window created.");
+    }
+
+    g_is_fullscreen = fullscreen;
+    g_windowed_width = window_width;
+    g_windowed_height = window_height;
+    if (!fullscreen) {
+        glfwGetWindowPos(window, &g_windowed_x, &g_windowed_y);
     }
 
     VkResult result;
@@ -2112,6 +2153,7 @@ int main(int argc, char** argv) {
         if (key == GLFW_KEY_ESCAPE) {
             glfwSetWindowShouldClose(glfw_window, true);
         }
+
         /* --------------------------------------------- */
         // Subtask 3.3: Interaction
         /* --------------------------------------------- */
@@ -2120,6 +2162,9 @@ int main(int argc, char** argv) {
         }
         if (key == GLFW_KEY_R) {
             g_replay_requested = true;
+        }
+        if (key == GLFW_KEY_F) {
+            toggleFullscreen(glfw_window);
         }
     });
 
