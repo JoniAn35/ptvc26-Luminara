@@ -64,11 +64,12 @@ constexpr std::array<const char*, 4> DOOR_STATIC_OBJECT_NAMES = {
 constexpr glm::vec3 SENSOR_POSITION = glm::vec3(ROOM_HALF_EXTENT_X, INTERACTIVE_OBJECTS_Y, -0.45f);
 constexpr float SENSOR_RADIUS_XZ = 0.15f;
 constexpr glm::vec3 SENSOR_SCALE = glm::vec3(0.12f, 0.12f, 0.12f);
-constexpr float MIRROR_HALF_LENGTH = 0.35f;
 constexpr glm::vec3 MIRROR_SIZE = glm::vec3(0.05f, 0.3f, 0.3f);
+constexpr float MIRROR_HALF_LENGTH = MIRROR_SIZE.z * 0.5f;
 constexpr glm::vec3 MIRROR_PICK_SIZE = glm::vec3(0.45f, 0.95f, 1.05f);
 constexpr glm::vec3 MIRROR1_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, 1.1f);
 constexpr glm::vec3 MIRROR2_POSITION = glm::vec3(-0.65f, INTERACTIVE_OBJECTS_Y, -0.45f);
+constexpr float BEAM_SURFACE_BIAS = 0.001f;
 constexpr float BEAM_RADIUS = 0.01f;
 constexpr float BEAM_GLOW_RADIUS = 0.04f;
 constexpr uint32_t BEAM_CYLINDER_SEGMENTS = 18;
@@ -338,6 +339,11 @@ static bool g_left_clicked = false;
 static bool g_left_pressed = false;
 static double g_left_press_x = 0.0;
 static double g_left_press_y = 0.0;
+static bool g_fullscreen = false;
+static int g_windowed_x = 100;
+static int g_windowed_y = 100;
+static int g_windowed_width = 1280;
+static int g_windowed_height = 720;
 
 // Optional cubemap descriptor used by mirror reflections in the fragment shader.
 static VkImageView g_environment_cubemap_view = VK_NULL_HANDLE;
@@ -922,6 +928,7 @@ bool rayIntersectsMirror2D(const glm::vec2& origin, const glm::vec2& direction, 
     float t_enter = -std::numeric_limits<float>::max();
     float t_exit = std::numeric_limits<float>::max();
     glm::vec2 enter_normal_local(0.0f, 0.0f);
+    glm::vec2 exit_normal_local(0.0f, 0.0f);
 
     auto updateSlab = [&](float origin_axis, float dir_axis, float min_axis, float max_axis, const glm::vec2& n_min, const glm::vec2& n_max) -> bool {
         if (std::abs(dir_axis) < epsilon) {
@@ -941,7 +948,10 @@ bool rayIntersectsMirror2D(const glm::vec2& origin, const glm::vec2& direction, 
             t_enter = t1;
             enter_normal_local = n1;
         }
-        t_exit = std::min(t_exit, t2);
+        if (t2 < t_exit) {
+            t_exit = t2;
+            exit_normal_local = n2;
+        }
         return t_enter <= t_exit;
     };
 
@@ -956,17 +966,19 @@ bool rayIntersectsMirror2D(const glm::vec2& origin, const glm::vec2& direction, 
         return false;
     }
 
-    const float t = t_enter > epsilon ? t_enter : t_exit;
+    const bool starts_inside = t_enter <= epsilon;
+    const float t = starts_inside ? t_exit : t_enter;
     if (t <= epsilon) {
         return false;
     }
 
     t_hit = t;
     hit_point = origin + direction * t;
-    mirror_normal = glm::normalize(enter_normal_local.x * tangent + enter_normal_local.y * front_normal);
+    const glm::vec2 hit_normal_local = starts_inside ? exit_normal_local : enter_normal_local;
+    mirror_normal = glm::normalize(hit_normal_local.x * tangent + hit_normal_local.y * front_normal);
 
     // Only the +v face (local +X in mesh space) is reflective.
-    hit_reflective_side = (enter_normal_local.y > 0.5f && std::abs(enter_normal_local.x) < 0.5f);
+    hit_reflective_side = (hit_normal_local.y > 0.5f && std::abs(hit_normal_local.x) < 0.5f);
     return true;
 }
 
@@ -1153,10 +1165,14 @@ int main(int argc, char** argv) {
 
     GLFWwindow* window = nullptr;
     window = glfwCreateWindow(window_width, window_height, window_title.c_str(), monitor, nullptr);
+    g_fullscreen = (monitor != nullptr);
 
     if (!window) {
         VKL_EXIT_WITH_ERROR("No GLFW window created.");
     }
+
+    glfwGetWindowPos(window, &g_windowed_x, &g_windowed_y);
+    glfwGetWindowSize(window, &g_windowed_width, &g_windowed_height);
 
     VkResult result;
     VkInstance vk_instance = VK_NULL_HANDLE;              // To be set during Subtask 1.3
@@ -2104,6 +2120,23 @@ int main(int argc, char** argv) {
         if (key == GLFW_KEY_ESCAPE) {
             glfwSetWindowShouldClose(glfw_window, true);
         }
+        if (key == GLFW_KEY_F) {
+            GLFWmonitor* primary_monitor = glfwGetPrimaryMonitor();
+            if (primary_monitor) {
+                if (!g_fullscreen) {
+                    glfwGetWindowPos(glfw_window, &g_windowed_x, &g_windowed_y);
+                    glfwGetWindowSize(glfw_window, &g_windowed_width, &g_windowed_height);
+                    const GLFWvidmode* mode = glfwGetVideoMode(primary_monitor);
+                    if (mode) {
+                        glfwSetWindowMonitor(glfw_window, primary_monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+                        g_fullscreen = true;
+                    }
+                } else {
+                    glfwSetWindowMonitor(glfw_window, nullptr, g_windowed_x, g_windowed_y, g_windowed_width, g_windowed_height, 0);
+                    g_fullscreen = false;
+                }
+            }
+        }
         /* --------------------------------------------- */
         // Subtask 3.3: Interaction
         /* --------------------------------------------- */
@@ -2299,7 +2332,7 @@ int main(int argc, char** argv) {
                         break;
                     }
                     beam_direction = glm::normalize(beam_direction - 2.0f * glm::dot(beam_direction, hit_normal) * hit_normal);
-                    beam_origin = hit_point + beam_direction * 0.01f;
+                    beam_origin = hit_point + hit_normal * BEAM_SURFACE_BIAS;
                 } else {
                     break;
                 }
