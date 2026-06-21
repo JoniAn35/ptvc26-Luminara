@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <cstddef>
 #include <exception>
 
 #include <sstream>
@@ -248,6 +249,9 @@ struct UniformBuffer {
 
     /*! stores user input as magic numbers */
     glm::ivec4 userInput;
+
+    /*! Storage for a secondary view-projection matrix used for mirror planar reflections */
+    glm::mat4 reflectionViewProjMatrix;
 };
 
 /*!
@@ -386,6 +390,8 @@ static int g_culling_index = 0;
  *	@param	num_instances	How many instances to draw of the given geometry. Default = one single instance.
  */
 void drawGeometryWithMaterial(VkPipeline pipeline, const Geometry& geometry, VkDescriptorSet material, uint32_t num_instances = 1u);
+void drawGeometryWithMaterialToCommandBuffer(VkCommandBuffer cb, VkPipeline pipeline, const Geometry& geometry, VkDescriptorSet material,
+    uint32_t num_instances = 1u);
 
 static bool g_timer_enabled = true;
 
@@ -1371,7 +1377,6 @@ int main(int argc, char** argv) {
     // Retrieve the swapchain images:
     std::vector<VkImage> swapchain_image_handles(swapchain_image_count);
     vkGetSwapchainImagesKHR(vk_device, vk_swapchain, &swapchain_image_count, swapchain_image_handles.data());
-    std::vector<bool> swapchain_image_presented_once(swapchain_image_count, false);
 
     /* --------------------------------------------- */
     // Subtask 2.7: Depth Test
@@ -1625,7 +1630,13 @@ int main(int argc, char** argv) {
     ImageAndView wood_texture = loadImage(vk_device, vk_queue, command_pool, "assets/textures/wood_texture.dds");
     ImageAndView wooden_floor_texture = loadImage(vk_device, vk_queue, command_pool, "assets/textures/wooden_floor.dds");
     ImageAndView tiles_diffuse = loadImage(vk_device, vk_queue, command_pool, "assets/textures/tiles_diffuse.dds");
-    VkImage mirror_scene_image = vklCreateDeviceLocalImageWithBackingMemory(
+    VkImage mirror_scene_image_1 = vklCreateDeviceLocalImageWithBackingMemory(
+        swapchain_create_info.imageExtent.width,
+        swapchain_create_info.imageExtent.height,
+        swapchain_create_info.imageFormat,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+    );
+    VkImage mirror_scene_image_2 = vklCreateDeviceLocalImageWithBackingMemory(
         swapchain_create_info.imageExtent.width,
         swapchain_create_info.imageExtent.height,
         swapchain_create_info.imageFormat,
@@ -1633,7 +1644,6 @@ int main(int argc, char** argv) {
     );
     VkImageViewCreateInfo mirror_scene_view_ci = {};
     mirror_scene_view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    mirror_scene_view_ci.image = mirror_scene_image;
     mirror_scene_view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
     mirror_scene_view_ci.format = swapchain_create_info.imageFormat;
     mirror_scene_view_ci.components.r = VK_COMPONENT_SWIZZLE_R;
@@ -1645,9 +1655,121 @@ int main(int argc, char** argv) {
     mirror_scene_view_ci.subresourceRange.levelCount = 1u;
     mirror_scene_view_ci.subresourceRange.baseArrayLayer = 0u;
     mirror_scene_view_ci.subresourceRange.layerCount = 1u;
-    VkImageView mirror_scene_view = VK_NULL_HANDLE;
-    result = vkCreateImageView(vk_device, &mirror_scene_view_ci, nullptr, &mirror_scene_view);
+    VkImageView mirror_scene_view_1 = VK_NULL_HANDLE;
+    mirror_scene_view_ci.image = mirror_scene_image_1;
+    result = vkCreateImageView(vk_device, &mirror_scene_view_ci, nullptr, &mirror_scene_view_1);
     VKL_CHECK_VULKAN_RESULT(result);
+    VkImageView mirror_scene_view_2 = VK_NULL_HANDLE;
+    mirror_scene_view_ci.image = mirror_scene_image_2;
+    result = vkCreateImageView(vk_device, &mirror_scene_view_ci, nullptr, &mirror_scene_view_2);
+    VKL_CHECK_VULKAN_RESULT(result);
+
+    VkImage mirror_reflection_depth_image = vklCreateDeviceLocalImageWithBackingMemory(
+        swapchain_create_info.imageExtent.width,
+        swapchain_create_info.imageExtent.height,
+        VK_FORMAT_D32_SFLOAT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+    VkImageViewCreateInfo mirror_reflection_depth_view_ci = {};
+    mirror_reflection_depth_view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    mirror_reflection_depth_view_ci.image = mirror_reflection_depth_image;
+    mirror_reflection_depth_view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    mirror_reflection_depth_view_ci.format = VK_FORMAT_D32_SFLOAT;
+    mirror_reflection_depth_view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    mirror_reflection_depth_view_ci.subresourceRange.baseMipLevel = 0u;
+    mirror_reflection_depth_view_ci.subresourceRange.levelCount = 1u;
+    mirror_reflection_depth_view_ci.subresourceRange.baseArrayLayer = 0u;
+    mirror_reflection_depth_view_ci.subresourceRange.layerCount = 1u;
+    VkImageView mirror_reflection_depth_view = VK_NULL_HANDLE;
+    result = vkCreateImageView(vk_device, &mirror_reflection_depth_view_ci, nullptr, &mirror_reflection_depth_view);
+    VKL_CHECK_VULKAN_RESULT(result);
+
+    VkAttachmentDescription offscreen_attachments[2] = {};
+    offscreen_attachments[0].format = swapchain_create_info.imageFormat;
+    offscreen_attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    offscreen_attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    offscreen_attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    offscreen_attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    offscreen_attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    offscreen_attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    offscreen_attachments[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    offscreen_attachments[1].format = VK_FORMAT_D32_SFLOAT;
+    offscreen_attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    offscreen_attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    offscreen_attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    offscreen_attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    offscreen_attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    offscreen_attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    offscreen_attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference offscreen_color_ref = {0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference offscreen_depth_ref = {1u, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+
+    VkSubpassDescription offscreen_subpass = {};
+    offscreen_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    offscreen_subpass.colorAttachmentCount = 1u;
+    offscreen_subpass.pColorAttachments = &offscreen_color_ref;
+    offscreen_subpass.pDepthStencilAttachment = &offscreen_depth_ref;
+
+    VkSubpassDependency offscreen_deps[2] = {};
+    offscreen_deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    offscreen_deps[0].dstSubpass = 0u;
+    offscreen_deps[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    offscreen_deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    offscreen_deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    offscreen_deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    offscreen_deps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    offscreen_deps[1].srcSubpass = 0u;
+    offscreen_deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    offscreen_deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    offscreen_deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    offscreen_deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    offscreen_deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    offscreen_deps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    VkRenderPassCreateInfo offscreen_render_pass_ci = {};
+    offscreen_render_pass_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    offscreen_render_pass_ci.attachmentCount = 2u;
+    offscreen_render_pass_ci.pAttachments = offscreen_attachments;
+    offscreen_render_pass_ci.subpassCount = 1u;
+    offscreen_render_pass_ci.pSubpasses = &offscreen_subpass;
+    offscreen_render_pass_ci.dependencyCount = 2u;
+    offscreen_render_pass_ci.pDependencies = offscreen_deps;
+    VkRenderPass mirror_offscreen_render_pass = VK_NULL_HANDLE;
+    result = vkCreateRenderPass(vk_device, &offscreen_render_pass_ci, nullptr, &mirror_offscreen_render_pass);
+    VKL_CHECK_VULKAN_RESULT(result);
+
+    VkFramebuffer mirror_offscreen_framebuffer_1 = VK_NULL_HANDLE;
+    {
+        VkImageView attachments[] = {mirror_scene_view_1, mirror_reflection_depth_view};
+        VkFramebufferCreateInfo fb_ci = {};
+        fb_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb_ci.renderPass = mirror_offscreen_render_pass;
+        fb_ci.attachmentCount = 2u;
+        fb_ci.pAttachments = attachments;
+        fb_ci.width = swapchain_create_info.imageExtent.width;
+        fb_ci.height = swapchain_create_info.imageExtent.height;
+        fb_ci.layers = 1u;
+        result = vkCreateFramebuffer(vk_device, &fb_ci, nullptr, &mirror_offscreen_framebuffer_1);
+        VKL_CHECK_VULKAN_RESULT(result);
+    }
+
+    VkFramebuffer mirror_offscreen_framebuffer_2 = VK_NULL_HANDLE;
+    {
+        VkImageView attachments[] = {mirror_scene_view_2, mirror_reflection_depth_view};
+        VkFramebufferCreateInfo fb_ci = {};
+        fb_ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fb_ci.renderPass = mirror_offscreen_render_pass;
+        fb_ci.attachmentCount = 2u;
+        fb_ci.pAttachments = attachments;
+        fb_ci.width = swapchain_create_info.imageExtent.width;
+        fb_ci.height = swapchain_create_info.imageExtent.height;
+        fb_ci.layers = 1u;
+        result = vkCreateFramebuffer(vk_device, &fb_ci, nullptr, &mirror_offscreen_framebuffer_2);
+        VKL_CHECK_VULKAN_RESULT(result);
+    }
     ImageAndView environment_cubemap = loadImage(vk_device, vk_queue, command_pool,
         {
             "assets/textures/cubemap/posx.dds",
@@ -1672,6 +1794,13 @@ int main(int argc, char** argv) {
     sampler_create_info.maxLod = VK_LOD_CLAMP_NONE;
     VkSampler sampler;
     result = vkCreateSampler(vk_device, &sampler_create_info, nullptr, &sampler);
+    VKL_CHECK_VULKAN_RESULT(result);
+
+    VkSamplerCreateInfo mirror_sampler_create_info = sampler_create_info;
+    mirror_sampler_create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    mirror_sampler_create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    VkSampler mirror_sampler = VK_NULL_HANDLE;
+    result = vkCreateSampler(vk_device, &mirror_sampler_create_info, nullptr, &mirror_sampler);
     VKL_CHECK_VULKAN_RESULT(result);
 
     // Bind this cubemap globally to descriptor binding = 4 for all textured materials.
@@ -1773,8 +1902,8 @@ int main(int argc, char** argv) {
     );
     VkDescriptorSet ds_mirror_1 = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
     VkDescriptorSet ds_mirror_2 = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
-    writeDescriptorSet(vk_device, ds_mirror_1, ub_mirror_1, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
-    writeDescriptorSet(vk_device, ds_mirror_2, ub_mirror_2, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
+    writeDescriptorSet(vk_device, ds_mirror_1, ub_mirror_1, ub_dirlight, ub_pointlight, mirror_scene_view_1, mirror_sampler);
+    writeDescriptorSet(vk_device, ds_mirror_2, ub_mirror_2, ub_dirlight, ub_pointlight, mirror_scene_view_2, mirror_sampler);
 
     std::array<VkBuffer, MAX_BEAM_SEGMENTS> ub_beam_segments{};
     std::array<VkDescriptorSet, MAX_BEAM_SEGMENTS> ds_beam_segments{};
@@ -1861,7 +1990,7 @@ int main(int argc, char** argv) {
         sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
     );
     VkDescriptorSet ds_bloom_overlay = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
-    writeDescriptorSet(vk_device, ds_bloom_overlay, ub_bloom_overlay, ub_dirlight, ub_pointlight, mirror_scene_view, sampler);
+    writeDescriptorSet(vk_device, ds_bloom_overlay, ub_bloom_overlay, ub_dirlight, ub_pointlight, mirror_scene_view_1, sampler);
 
     std::vector<VkBuffer> ub_replay_button_strokes;
     std::vector<VkDescriptorSet> ds_replay_button_strokes;
@@ -1914,11 +2043,14 @@ int main(int argc, char** argv) {
     float time_remaining = LOSE_TIMER_SECONDS;
     constexpr int INITIAL_MIRROR_1_ROTATION = 5;
     constexpr int INITIAL_MIRROR_2_ROTATION = 1;
-    bool first_mirror_scene_copy = true;
     std::array<MirrorData, 2> mirrors = {
         MirrorData{glm::vec2(MIRROR1_POSITION.x, MIRROR1_POSITION.z), INITIAL_MIRROR_1_ROTATION, MIRROR_HALF_LENGTH},
         MirrorData{glm::vec2(MIRROR2_POSITION.x, MIRROR2_POSITION.z), INITIAL_MIRROR_2_ROTATION, MIRROR_HALF_LENGTH}
     };
+    std::array<glm::mat4, 2> mirror_view_proj = {glm::mat4(1.0f), glm::mat4(1.0f)};
+    std::array<glm::vec3, 2> mirror_camera_pos = {glm::vec3(0.0f), glm::vec3(0.0f)};
+    std::array<bool, 2> mirror_initialized = {false, false};
+    uint32_t mirror_update_frame_counter = 0u;
     std::vector<BeamSegment> beam_segments;
 
     // First-person camera state (inside the room).
@@ -1943,6 +2075,8 @@ int main(int argc, char** argv) {
         mirrors[0].rotationIndex = INITIAL_MIRROR_1_ROTATION;
         mirrors[1].rotationIndex = INITIAL_MIRROR_2_ROTATION;
         beam_segments.clear();
+        mirror_initialized = {false, false};
+        mirror_update_frame_counter = 0u;
         player_position = glm::vec3(0.0f, PLAYER_EYE_HEIGHT_Y, 1.2f);
         player_yaw = camera_yaw;
         player_pitch = camera_pitch;
@@ -2181,6 +2315,41 @@ int main(int argc, char** argv) {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
 
+        {
+            const glm::vec3 mirror_centers[2] = {MIRROR1_POSITION, MIRROR2_POSITION};
+            const float mirror_fov_scale = 1.25f;
+            const glm::mat4 mirror_proj_matrix = gcgCreatePerspectiveProjectionMatrix(
+                glm::radians(glm::clamp(field_of_view * mirror_fov_scale, 35.0f, 115.0f)),
+                aspect_ratio,
+                near_plane_distance,
+                far_plane_distance
+            );
+            for (int i = 0; i < 2; ++i) {
+                const float mirror_angle = glm::radians(45.0f * static_cast<float>(mirrors[i].rotationIndex));
+                const glm::mat4 mirror_rot = glm::rotate(glm::mat4(1.0f), mirror_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+                const glm::vec3 mirror_normal = glm::normalize(glm::vec3(mirror_rot * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+
+                const auto reflect_point = [&](const glm::vec3& p) {
+                    return p - 2.0f * glm::dot(p - mirror_centers[i], mirror_normal) * mirror_normal;
+                };
+                const auto reflect_direction = [&](const glm::vec3& d) {
+                    return glm::normalize(d - 2.0f * glm::dot(d, mirror_normal) * mirror_normal);
+                };
+
+                const glm::vec3 mirrored_eye = reflect_point(player_position);
+                glm::vec3 mirrored_forward = reflect_direction(camera_forward);
+                glm::vec3 mirrored_up = reflect_direction(camera_up);
+
+                // Keep a stable orthonormal basis for lookAt.
+                const glm::vec3 mirrored_right = glm::normalize(glm::cross(mirrored_forward, mirrored_up));
+                mirrored_up = glm::normalize(glm::cross(mirrored_right, mirrored_forward));
+
+                const glm::mat4 mirror_view = glm::lookAt(mirrored_eye, mirrored_eye + mirrored_forward, mirrored_up);
+                mirror_view_proj[i] = mirror_proj_matrix * mirror_view;
+                mirror_camera_pos[i] = mirrored_eye;
+            }
+        }
+
         UniformBuffer ub_data;
         ub_data.userInput[0] = 0;
         ub_data.userInput[1] = 0;
@@ -2190,6 +2359,7 @@ int main(int argc, char** argv) {
         // View-projection matrix and camera's position stay the same for all rendered objects:
         ub_data.viewProjMatrix = view_proj;
         ub_data.cameraPosition = glm::vec4{player_position, 1.0f};
+        ub_data.reflectionViewProjMatrix = view_proj;
         ub_data.color = {1.f, 1.f, 1.f, 1.f};
         // Update cornell box:
         ub_data.color = {0.7f, 0.1f, 0.2f, 1.0f};
@@ -2253,7 +2423,8 @@ int main(int argc, char** argv) {
                               * glm::scale(glm::mat4{1.0f}, MIRROR_SIZE);
         ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
         ub_data.userInput[3] = 1;
-        ub_data.materialProperties = {0.2f, 0.85f, 0.9f, 32.0f};
+        ub_data.materialProperties = {0.02f, 0.15f, 1.0f, 96.0f};
+        ub_data.reflectionViewProjMatrix = mirror_view_proj[0];
         vklCopyDataIntoHostCoherentBuffer(ub_mirror_1, &ub_data, sizeof(UniformBuffer));
 
         float mirror_2_angle = glm::radians(45.0f * static_cast<float>(mirrors[1].rotationIndex));
@@ -2262,7 +2433,8 @@ int main(int argc, char** argv) {
                               * glm::scale(glm::mat4{1.0f}, MIRROR_SIZE);
         ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
         ub_data.userInput[3] = 1;
-        ub_data.materialProperties = {0.2f, 0.85f, 0.9f, 32.0f};
+        ub_data.materialProperties = {0.02f, 0.15f, 1.0f, 96.0f};
+        ub_data.reflectionViewProjMatrix = mirror_view_proj[1];
         vklCopyDataIntoHostCoherentBuffer(ub_mirror_2, &ub_data, sizeof(UniformBuffer));
 
         ub_data.userInput[3] = 0;
@@ -2594,27 +2766,125 @@ int main(int argc, char** argv) {
         ub_data.viewProjMatrix = view_proj;
         ub_data.cameraPosition = glm::vec4{player_position, 1.0f};
 
+        // Render a dedicated offscreen scene for each mirror from a mirrored camera.
+        {
+            std::vector<VkBuffer> world_uniform_buffers;
+            world_uniform_buffers.reserve(16u + ub_label_strokes.size());
+            world_uniform_buffers.push_back(ub_cornell);
+            world_uniform_buffers.push_back(ub_button);
+            world_uniform_buffers.push_back(ub_door);
+            world_uniform_buffers.push_back(ub_door_frame);
+            world_uniform_buffers.push_back(ub_sensor);
+            world_uniform_buffers.push_back(ub_mirror_1);
+            world_uniform_buffers.push_back(ub_mirror_2);
+            for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
+                world_uniform_buffers.push_back(ub_beam_segments[i]);
+                world_uniform_buffers.push_back(ub_beam_glow_segments[i]);
+            }
+            for (VkBuffer ub : ub_label_strokes) {
+                world_uniform_buffers.push_back(ub);
+            }
+
+            auto patchCameraFieldsForBuffers = [&](const glm::mat4& vp, const glm::vec3& camera_pos) {
+                for (VkBuffer ub : world_uniform_buffers) {
+                    vklCopyDataIntoHostCoherentBuffer(ub, offsetof(UniformBuffer, viewProjMatrix), &vp, sizeof(glm::mat4));
+                    const glm::vec4 camera_pos4(camera_pos, 1.0f);
+                    vklCopyDataIntoHostCoherentBuffer(ub, offsetof(UniformBuffer, cameraPosition), &camera_pos4, sizeof(glm::vec4));
+                }
+            };
+
+            const VkFramebuffer mirror_framebuffers[2] = {mirror_offscreen_framebuffer_1, mirror_offscreen_framebuffer_2};
+            const VkPipeline offscreen_cornell_pipeline = cornell_pipelines[g_polygon_mode_index][0];
+            const VkPipeline offscreen_custom_pipeline = custom_pipelines[g_polygon_mode_index][0][0];
+            std::array<int, 2> mirrors_to_update = {-1, -1};
+            int mirrors_to_update_count = 0;
+            for (int i = 0; i < 2; ++i) {
+                if (!mirror_initialized[i]) {
+                    mirrors_to_update[mirrors_to_update_count++] = i;
+                }
+            }
+            if (mirrors_to_update_count == 0) {
+                mirrors_to_update[0] = static_cast<int>(mirror_update_frame_counter % 2u);
+                mirrors_to_update_count = 1;
+            }
+
+            VkCommandBufferAllocateInfo alloc_info = {};
+            alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            alloc_info.commandPool = command_pool;
+            alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            alloc_info.commandBufferCount = 1u;
+
+            VkCommandBuffer offscreen_cb = VK_NULL_HANDLE;
+            result = vkAllocateCommandBuffers(vk_device, &alloc_info, &offscreen_cb);
+            VKL_CHECK_VULKAN_RESULT(result);
+
+            VkCommandBufferBeginInfo begin_info = {};
+            begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(offscreen_cb, &begin_info);
+
+            VkClearValue offscreen_clear_values[2] = {};
+            offscreen_clear_values[0].color.float32[0] = BACKGROUND_R;
+            offscreen_clear_values[0].color.float32[1] = BACKGROUND_G;
+            offscreen_clear_values[0].color.float32[2] = BACKGROUND_B;
+            offscreen_clear_values[0].color.float32[3] = 1.0f;
+            offscreen_clear_values[1].depthStencil.depth = 1.0f;
+            offscreen_clear_values[1].depthStencil.stencil = 0u;
+
+            for (int k = 0; k < mirrors_to_update_count; ++k) {
+                const int mirror_idx = mirrors_to_update[k];
+                patchCameraFieldsForBuffers(mirror_view_proj[mirror_idx], mirror_camera_pos[mirror_idx]);
+
+                VkRenderPassBeginInfo render_pass_begin_info = {};
+                render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                render_pass_begin_info.renderPass = mirror_offscreen_render_pass;
+                render_pass_begin_info.framebuffer = mirror_framebuffers[mirror_idx];
+                render_pass_begin_info.renderArea.offset = {0, 0};
+                render_pass_begin_info.renderArea.extent = swapchain_create_info.imageExtent;
+                render_pass_begin_info.clearValueCount = 2u;
+                render_pass_begin_info.pClearValues = offscreen_clear_values;
+
+                vkCmdBeginRenderPass(offscreen_cb, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+                drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_cornell_pipeline, cornell_geometry, ds_cornell);
+                drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, door_frame_geometry, ds_door_frame);
+                drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, door_geometry, ds_door);
+
+                if (!has_won && !has_lost) {
+                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_button);
+                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, sphere_geometry, ds_sensor);
+                }
+
+                vkCmdEndRenderPass(offscreen_cb);
+                mirror_initialized[mirror_idx] = true;
+            }
+
+            vkEndCommandBuffer(offscreen_cb);
+
+            VkFenceCreateInfo fence_info = {};
+            fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            VkFence fence = VK_NULL_HANDLE;
+            result = vkCreateFence(vk_device, &fence_info, nullptr, &fence);
+            VKL_CHECK_VULKAN_RESULT(result);
+
+            VkSubmitInfo submit_info = {};
+            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit_info.commandBufferCount = 1u;
+            submit_info.pCommandBuffers = &offscreen_cb;
+            result = vkQueueSubmit(vk_queue, 1u, &submit_info, fence);
+            VKL_CHECK_VULKAN_RESULT(result);
+            result = vkWaitForFences(vk_device, 1u, &fence, VK_TRUE, UINT64_MAX);
+            VKL_CHECK_VULKAN_RESULT(result);
+
+            vkDestroyFence(vk_device, fence, nullptr);
+            vkFreeCommandBuffers(vk_device, command_pool, 1u, &offscreen_cb);
+            ++mirror_update_frame_counter;
+
+            // Restore world-space camera data for the main scene pass.
+            patchCameraFieldsForBuffers(view_proj, player_position);
+        }
+
         // Wait until we get an image from the swapchain to render into:
         vklWaitForNextSwapchainImage();
-
-        // Copy the current swapchain image into a sampled texture for mirror reflections.
-        {
-            const uint32_t current_image_idx = vklGetCurrentSwapChainImageIndex();
-            const bool src_was_presented_before = swapchain_image_presented_once[current_image_idx];
-            copySwapchainImageToMirrorTexture(
-                vk_device,
-                vk_queue,
-                command_pool,
-                swapchain_image_handles[current_image_idx],
-                mirror_scene_image,
-                swapchain_create_info.imageExtent.width,
-                swapchain_create_info.imageExtent.height,
-                first_mirror_scene_copy,
-                src_was_presented_before
-            );
-            swapchain_image_presented_once[current_image_idx] = true;
-            first_mirror_scene_copy = false;
-        }
 
         vklStartRecordingCommands();
 
@@ -2726,13 +2996,21 @@ int main(int argc, char** argv) {
     destroyGeometryGpuMemory(door_frame_geometry);
     destroyGeometryGpuMemory(door_geometry);
     destroyGeometryGpuMemory(box_geometry);
+    vkDestroySampler(vk_device, mirror_sampler, nullptr);
     vkDestroySampler(vk_device, sampler, nullptr);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_pointlight);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_dirlight);
     vkDestroyImageView(vk_device, tiles_diffuse.view, nullptr);
     vklDestroyDeviceLocalImageAndItsBackingMemory(tiles_diffuse.image);
-    vkDestroyImageView(vk_device, mirror_scene_view, nullptr);
-    vklDestroyDeviceLocalImageAndItsBackingMemory(mirror_scene_image);
+    vkDestroyFramebuffer(vk_device, mirror_offscreen_framebuffer_2, nullptr);
+    vkDestroyFramebuffer(vk_device, mirror_offscreen_framebuffer_1, nullptr);
+    vkDestroyRenderPass(vk_device, mirror_offscreen_render_pass, nullptr);
+    vkDestroyImageView(vk_device, mirror_reflection_depth_view, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(mirror_reflection_depth_image);
+    vkDestroyImageView(vk_device, mirror_scene_view_2, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(mirror_scene_image_2);
+    vkDestroyImageView(vk_device, mirror_scene_view_1, nullptr);
+    vklDestroyDeviceLocalImageAndItsBackingMemory(mirror_scene_image_1);
     vkDestroyImageView(vk_device, environment_cubemap.view, nullptr);
     vklDestroyDeviceLocalImageAndItsBackingMemory(environment_cubemap.image);
     vkDestroyImageView(vk_device, wooden_floor_texture.view, nullptr);
@@ -3065,6 +3343,26 @@ void drawGeometryWithMaterial(VkPipeline pipeline, const Geometry& geometry, VkD
 
     // Record the draw call into the command buffer, which uses vertex and index buffers of the geometry:
     vklCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    if (VK_NULL_HANDLE == geometry.colorsBuffer) {
+        VkBuffer vertex_buffers[3] = {geometry.positionsBuffer, geometry.normalsBuffer, geometry.textureCoordinatesBuffer};
+        VkDeviceSize offsets[3] = {0, 0, 0};
+        vkCmdBindVertexBuffers(cb, 0u, 3u, vertex_buffers, offsets);
+    } else {
+        VkBuffer vertex_buffers[3] = {geometry.positionsBuffer, geometry.normalsBuffer, geometry.colorsBuffer};
+        VkDeviceSize offsets[3] = {0, 0, 0};
+        vkCmdBindVertexBuffers(cb, 0u, 3u, vertex_buffers, offsets);
+    }
+
+    vkCmdBindIndexBuffer(cb, geometry.indicesBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(cb, geometry.numberOfIndices, num_instances, 0u, 0u, 0u);
+}
+
+void drawGeometryWithMaterialToCommandBuffer(VkCommandBuffer cb, VkPipeline pipeline, const Geometry& geometry, VkDescriptorSet material,
+    uint32_t num_instances) {
+    VkPipelineLayout pipeline_layout = vklGetLayoutForPipeline(pipeline);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0u, 1u, &material, 0u, nullptr);
+    vklCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
     if (VK_NULL_HANDLE == geometry.colorsBuffer) {
         VkBuffer vertex_buffers[3] = {geometry.positionsBuffer, geometry.normalsBuffer, geometry.textureCoordinatesBuffer};
         VkDeviceSize offsets[3] = {0, 0, 0};

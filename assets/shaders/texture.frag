@@ -15,6 +15,7 @@ layout (binding = 0) uniform UniformBuffer {
 	vec4 cameraPosition;
 	vec4 illumination; // ka, kd, ks, alpha
 	ivec4 userInput;
+	mat4 reflectionViewProjMatrix;
 } ub_data;
 
 layout (binding = 1) uniform DirectionalLight {
@@ -180,29 +181,22 @@ void main() {
 	vec3 R = normalize(clampedReflect(v, n));
 	vec3 reflectionColor = getCornellBoxReflectionColor(frag_in.positionWorld, R);
 	if (ub_data.userInput[3] == 1) {
-		// Dynamic reflection approximation from the live scene texture.
-		vec3 samplePos = frag_in.positionWorld + R * 1.2;
-		vec4 clip = ub_data.viewProjMatrix * vec4(samplePos, 1.0);
-
-		vec4 baseClip = ub_data.viewProjMatrix * vec4(frag_in.positionWorld, 1.0);
-		vec2 baseUv = baseClip.xy / max(baseClip.w, 1e-5);
-		baseUv = baseUv * 0.5 + 0.5;
-		baseUv.x = 1.0 - baseUv.x;
-
-		vec2 reflectedUv = clip.xy / max(clip.w, 1e-5);
-		reflectedUv = reflectedUv * 0.5 + 0.5;
-		reflectedUv.x = 1.0 - reflectedUv.x;
-
-		vec2 finalUv = mix(baseUv, reflectedUv, 0.8);
-		finalUv = clamp(finalUv, vec2(0.0), vec2(1.0));
+		// Project the current mirror fragment into the mirrored camera render target.
+		vec4 clip = ub_data.reflectionViewProjMatrix * vec4(frag_in.positionWorld, 1.0);
+		vec2 finalUv = clip.xy / max(clip.w, 1e-5);
+		finalUv = finalUv * 0.5 + 0.5;
+		// Widen mirror coverage to avoid the "zoomed-in" look on the mirror surface.
+		finalUv = (finalUv - vec2(0.5)) * 1.5 + vec2(0.5);
+		finalUv = clamp(finalUv, vec2(0.001), vec2(0.999));
 		reflectionColor = texture(diffuse_texture, finalUv).rgb;
 	}
-	vec3 F0 = vec3(0.1); // <-- some kind of plastic
+	vec3 F0 = vec3(0.1); // default non-mirror base reflectivity
 	vec3 reflectivity = fresnelSchlick(dot(n, -v), F0);
 	float reflectionMask = 1.0;
 	vec3 diffuseColor = vec3(0.82, 0.82, 0.82);
 	if (ub_data.userInput[3] == 4) {
 		diffuseColor = vec3(0.20, 0.20, 0.22);
+		reflectionMask = 0.0;
 	}
 	if (ub_data.userInput[3] == 3) {
 		diffuseColor = beamColor;
@@ -216,6 +210,9 @@ void main() {
 		float frontAlignment = dot(n, mirrorFrontNormalWS);
 		// Reflect only the front face.
 		reflectionMask = frontAlignment > 0.8 ? 1.0 : 0.0;
+		F0 = vec3(0.92);
+		reflectivity = fresnelSchlick(dot(n, -v), F0);
+		diffuseColor = vec3(0.03, 0.03, 0.04);
 		if (frontAlignment < -0.8) {
 			diffuseColor = vec3(0.05, 0.05, 0.06);
 		}

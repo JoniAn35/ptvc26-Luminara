@@ -19,6 +19,7 @@ layout (binding = 0) uniform UniformBuffer {
 	vec4 cameraPosition;
 	vec4 illumination; // ka, kd, ks, alpha
 	ivec4 userInput;
+	mat4 reflectionViewProjMatrix;
 } ub_data;
 
 layout (binding = 1) uniform DirectionalLight {
