@@ -2488,7 +2488,7 @@ int main(int argc, char** argv) {
         ub_data.reflectionViewProjMatrix = mirror_view_proj[0];
         vklCopyDataIntoHostCoherentBuffer(ub_mirror_1, &ub_data, sizeof(UniformBuffer));
 
-        float mirror_2_angle = glm::radians(225.0f * static_cast<float>(mirrors[1].rotationIndex));
+        float mirror_2_angle = glm::radians(45.0f * static_cast<float>(mirrors[1].rotationIndex));
         ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, MIRROR2_POSITION)
                               * glm::rotate(glm::mat4{1.0f}, mirror_2_angle, glm::vec3(0.0f, 1.0f, 0.0f))
                               * glm::scale(glm::mat4{1.0f}, MIRROR_SIZE);
