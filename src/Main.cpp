@@ -337,6 +337,7 @@ static bool g_dragging = false;
 static bool g_strafing = false;
 static bool g_left_clicked = false;
 static bool g_left_pressed = false;
+static bool g_replay_requested = false;
 static double g_left_press_x = 0.0;
 static double g_left_press_y = 0.0;
 
@@ -2117,6 +2118,9 @@ int main(int argc, char** argv) {
         if (key == GLFW_KEY_T) {
             g_timer_enabled = !g_timer_enabled;
         }
+        if (key == GLFW_KEY_R) {
+            g_replay_requested = true;
+        }
     });
 
     double mouse_x, mouse_y;
@@ -2141,6 +2145,11 @@ int main(int argc, char** argv) {
             glfwSetWindowTitle(window, new_title.c_str());
             fps_timer = 0.0f;
             frame_count = 0;
+        }
+
+        if (g_replay_requested) {
+            g_replay_requested = false;
+            resetLevelState();
         }
 
         if (first_mouse_sample) {
