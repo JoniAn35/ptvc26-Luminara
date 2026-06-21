@@ -1532,13 +1532,15 @@ int main(int argc, char** argv) {
     }
 
     // Dedicated alpha-blended pipeline for beam glow shells.
+    std::string glowVertPath = gcgLoadShaderFilePath("assets/shaders/texture.vert");
+    std::string glowFragPath = gcgLoadShaderFilePath("assets/shaders/texture.frag");
     for (size_t i = 0; i < POLYMODES; ++i) {
         for (size_t j = 0; j < CULLMODES; ++j) {
             // clang-format off
             glow_pipelines[i][j] = vklCreateGraphicsPipeline(
                 VklGraphicsPipelineConfig {
-                    "assets/shaders/texture.vert",
-                    "assets/shaders/texture.frag",
+                    glowVertPath.c_str(),
+                    glowFragPath.c_str(),
                     {
                         VkVertexInputBindingDescription{0u, sizeof(float) * 3, VK_VERTEX_INPUT_RATE_VERTEX},
                         VkVertexInputBindingDescription{1u, sizeof(float) * 3, VK_VERTEX_INPUT_RATE_VERTEX},
@@ -2219,7 +2221,7 @@ int main(int argc, char** argv) {
                       * door_model_space;
         ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
         ub_data.userInput[3] = 4;
-        ub_data.materialProperties = {0.2f, 0.7f, 0.3f, 12.0f};
+        ub_data.materialProperties = {0.2f, 0.7f, 0.0f, 12.0f};
         vklCopyDataIntoHostCoherentBuffer(ub_door, &ub_data, sizeof(UniformBuffer));
 
         // Static frame stays fixed while the door leaf rotates.
@@ -2228,7 +2230,7 @@ int main(int argc, char** argv) {
                                   * glm::scale(glm::mat4{1.0f}, DOOR_SIZE)
                                   * door_model_space;
             ub_data.userInput[3] = 4;
-            ub_data.materialProperties = {0.2f, 0.7f, 0.3f, 12.0f};
+            ub_data.materialProperties = {0.2f, 0.7f, 0.0f, 12.0f};
         } else {
             ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, glm::vec3(0.0f, -20.0f, 0.0f));
             ub_data.userInput[3] = 5;
