@@ -2947,14 +2947,6 @@ int main(int argc, char** argv) {
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_button);
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_moving_cube);
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, sphere_geometry, ds_sensor);
-                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_mirror_1);
-                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_mirror_2);
-                    for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
-                        drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, beam_cylinder_geometry, ds_beam_segments[i]);
-                    }
-                    for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
-                        drawGeometryWithMaterialToCommandBuffer(offscreen_cb, glow_pipelines[g_polygon_mode_index][g_culling_index], beam_cylinder_geometry, ds_beam_glow_segments[i]);
-                    }
                 }
 
                 vkCmdEndRenderPass(offscreen_cb);
