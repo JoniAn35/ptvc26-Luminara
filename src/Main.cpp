@@ -96,6 +96,11 @@ constexpr glm::vec3 BOX_POSITION = glm::vec3(-0.6f, -0.9f, 0.0f);
 constexpr glm::vec3 CYLINDER_POSITION = glm::vec3(0.6f, 0.3f, 0.0f);
 constexpr glm::vec3 BEZIER_POSITION = glm::vec3(-0.6f, 0.0f, 0.0f);
 constexpr glm::vec3 SPHERE_POSITION = glm::vec3(0.6f, -0.9f, 0.0f);
+constexpr glm::vec3 MOVING_CUBE_CENTER = glm::vec3(0.0f, 0.2f, 0.0f);
+constexpr float MOVING_CUBE_ORBIT_RADIUS = 0.8f;
+constexpr float MOVING_CUBE_ORBIT_HEIGHT_OFFSET = 0.0f;
+constexpr float MOVING_CUBE_SIZE = 0.2f;
+constexpr float MOVING_CUBE_ROTATION_SPEED = 2.0f;
 constexpr float PLAYER_EYE_HEIGHT_Y = -0.50f;
 constexpr float WIN_PANEL_DISTANCE = 0.80f;
 constexpr float WIN_PANEL_WIDTH = 1.05f;
@@ -1943,6 +1948,12 @@ int main(int argc, char** argv) {
     VkDescriptorSet ds_sensor = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
     writeDescriptorSet(vk_device, ds_sensor, ub_sensor, ub_dirlight, ub_pointlight, tiles_diffuse.view, sampler);
 
+    VkBuffer ub_moving_cube = vklCreateHostCoherentBufferWithBackingMemory(
+        sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+    );
+    VkDescriptorSet ds_moving_cube = allocDescriptorSet(vk_device, vk_descriptor_pool, vk_descriptor_set_layout);
+    writeDescriptorSet(vk_device, ds_moving_cube, ub_moving_cube, ub_dirlight, ub_pointlight, wood_texture.view, sampler);
+
     VkBuffer ub_mirror_1 = vklCreateHostCoherentBufferWithBackingMemory(
         sizeof(UniformBuffer), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
     );
@@ -2477,6 +2488,25 @@ int main(int argc, char** argv) {
         ub_data.materialProperties = {0.2f, sensor_triggered ? 1.0f : 0.4f, 0.5f, 25.0f};
         vklCopyDataIntoHostCoherentBuffer(ub_sensor, &ub_data, sizeof(UniformBuffer));
 
+        // Moving cube orbits to demonstrate dynamic reflections
+        {
+            const float elapsed_time = static_cast<float>(glfwGetTime());
+            const float orbit_angle = elapsed_time * 1.5f;
+            const glm::vec3 orbit_position = MOVING_CUBE_CENTER + glm::vec3(
+                std::cos(orbit_angle) * MOVING_CUBE_ORBIT_RADIUS,
+                MOVING_CUBE_ORBIT_HEIGHT_OFFSET,
+                std::sin(orbit_angle) * MOVING_CUBE_ORBIT_RADIUS
+            );
+            const float rotation_angle = elapsed_time * MOVING_CUBE_ROTATION_SPEED;
+            ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, orbit_position)
+                                * glm::rotate(glm::mat4{1.0f}, rotation_angle, glm::normalize(glm::vec3(1.0f, 1.0f, 0.5f)))
+                                * glm::scale(glm::mat4{1.0f}, glm::vec3(MOVING_CUBE_SIZE));
+            ub_data.modelMatrixForNormals = glm::transpose(glm::inverse(ub_data.modelMatrix));
+            ub_data.userInput[3] = 0;
+            ub_data.materialProperties = {0.2f, 0.6f, 0.8f, 32.0f};
+            vklCopyDataIntoHostCoherentBuffer(ub_moving_cube, &ub_data, sizeof(UniformBuffer));
+        }
+
         // Mirrors
         float mirror_1_angle = glm::radians(45.0f * static_cast<float>(mirrors[0].rotationIndex));
         ub_data.modelMatrix = glm::translate(glm::mat4{1.0f}, MIRROR1_POSITION)
@@ -2838,6 +2868,7 @@ int main(int argc, char** argv) {
             world_uniform_buffers.push_back(ub_door);
             world_uniform_buffers.push_back(ub_door_frame);
             world_uniform_buffers.push_back(ub_sensor);
+            world_uniform_buffers.push_back(ub_moving_cube);
             world_uniform_buffers.push_back(ub_mirror_1);
             world_uniform_buffers.push_back(ub_mirror_2);
             for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
@@ -2914,6 +2945,7 @@ int main(int argc, char** argv) {
 
                 if (!has_won && !has_lost) {
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_button);
+                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_moving_cube);
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, sphere_geometry, ds_sensor);
                 }
 
@@ -2961,6 +2993,7 @@ int main(int argc, char** argv) {
             drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_button);
             drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_1);
             drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_mirror_2);
+            drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], box_geometry, ds_moving_cube);
             drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], sphere_geometry, ds_sensor);
             for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
                 drawGeometryWithMaterial(custom_pipelines[g_polygon_mode_index][g_culling_index][0], beam_cylinder_geometry, ds_beam_segments[i]);
@@ -3051,6 +3084,7 @@ int main(int argc, char** argv) {
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_mirror_2);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_mirror_1);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_sensor);
+    vklDestroyHostCoherentBufferAndItsBackingMemory(ub_moving_cube);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_door_frame);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_door);
     vklDestroyHostCoherentBufferAndItsBackingMemory(ub_button);
