@@ -96,7 +96,7 @@ constexpr glm::vec3 BOX_POSITION = glm::vec3(-0.6f, -0.9f, 0.0f);
 constexpr glm::vec3 CYLINDER_POSITION = glm::vec3(0.6f, 0.3f, 0.0f);
 constexpr glm::vec3 BEZIER_POSITION = glm::vec3(-0.6f, 0.0f, 0.0f);
 constexpr glm::vec3 SPHERE_POSITION = glm::vec3(0.6f, -0.9f, 0.0f);
-constexpr glm::vec3 MOVING_CUBE_CENTER = glm::vec3(0.0f, 0.2f, 0.0f);
+constexpr glm::vec3 MOVING_CUBE_CENTER = glm::vec3(0.0f, -0.2f, 0.0f);
 constexpr float MOVING_CUBE_ORBIT_RADIUS = 0.8f;
 constexpr float MOVING_CUBE_ORBIT_HEIGHT_OFFSET = 0.0f;
 constexpr float MOVING_CUBE_SIZE = 0.2f;
@@ -2947,6 +2947,14 @@ int main(int argc, char** argv) {
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_button);
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_moving_cube);
                     drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, sphere_geometry, ds_sensor);
+                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_mirror_1);
+                    drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, box_geometry, ds_mirror_2);
+                    for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
+                        drawGeometryWithMaterialToCommandBuffer(offscreen_cb, offscreen_custom_pipeline, beam_cylinder_geometry, ds_beam_segments[i]);
+                    }
+                    for (int i = 0; i < MAX_BEAM_SEGMENTS; ++i) {
+                        drawGeometryWithMaterialToCommandBuffer(offscreen_cb, glow_pipelines[g_polygon_mode_index][g_culling_index], beam_cylinder_geometry, ds_beam_glow_segments[i]);
+                    }
                 }
 
                 vkCmdEndRenderPass(offscreen_cb);
